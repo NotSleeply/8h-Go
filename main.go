@@ -1,19 +1,29 @@
-package main // main包是一个特殊的包
-import (
-	"fmt"  // 导入fmt包，fmt包实现了格式化输入输出功能
-	"time" // 导入time包，time包提供了时间的功能
-)
+package main
 
-/*
-- 导包
-- main函数
-- 注释
-- 打印输出
-*/
+import "fmt"
 
 func main() {
-	/* 简单的程序 万能的hello world */
-	fmt.Println("Hello Go")
+	/* 创建切片 */
+	numbers := []int{}
+	printSlice(numbers)
 
-	time.Sleep(2 * time.Second) // 让程序睡眠2秒钟
+	/* 打印原始切片 */
+	fmt.Println("numbers ==", numbers)
+
+	for i := 0; i < 10; i++ {
+		numbers = append(numbers, i)
+	}
+
+	/* 打印子切片从索引1(包含) 到索引4(不包含)*/
+	fmt.Println("numbers[1:4] ==", numbers[1:4])
+
+	/* 默认下限为 0*/
+	fmt.Println("numbers[:3] ==", numbers[:3])
+
+	/* 默认上限为 len(s)*/
+	fmt.Println("numbers[4:] ==", numbers[4:])
+}
+
+func printSlice(x []int) {
+	fmt.Printf("len=%d cap=%d slice=%v\n", len(x), cap(x), x)
 }
