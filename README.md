@@ -2,3 +2,6 @@
 
 ## [学习笔记](https://www.yuque.com/aceld/mo95lb/dsk886)
 
+```bash
+nc 127.0.0.1 8888
+```
