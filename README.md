@@ -2,6 +2,11 @@
 
 ## [学习笔记](https://www.yuque.com/aceld/mo95lb/dsk886)
 
+启动：
+```bash
+go run main.go
+```
+测试服务端：
 ```bash
 nc 127.0.0.1 8888
 ```

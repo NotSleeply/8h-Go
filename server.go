@@ -23,9 +23,35 @@ func NewServer(ip string, port int) *Server {
 	}
 }
 
+func (s *Server) ListenMessager() {
+	for {
+		msg := <-s.Message
+		s.mapLock.Lock()
+		for _, cli := range s.OnlineMap {
+			cli.C <- msg
+		}
+		s.mapLock.Unlock()
+	}
+}
+
+func (s *Server) BroadCast(user *User, msg string) {
+	sendMsg := "[" + user.Addr + "]" + user.Name + ":" + msg
+	s.Message <- sendMsg
+}
+
+/*
+创建新用户实例：基于客户端连接初始化用户对象；
+加锁将新用户加入 OnlineMap，完成「上线注册」；
+调用 BroadCast 方法，向所有在线用户推送该用户的上线通知；
+select {} 让协程永久阻塞（避免连接处理协程退出），保证用户连接持续有效。
+*/
 func (s *Server) Handler(conn net.Conn) {
-	// 处理用户连接
-	fmt.Printf("新连接来自: %s\n", conn.RemoteAddr().String())
+	user := NewUser(conn)
+	s.mapLock.Lock()
+	s.OnlineMap[user.Name] = user
+	s.mapLock.Unlock()
+	s.BroadCast(user, "已上线")
+	select {}
 }
 
 func (s *Server) Start() {
@@ -36,8 +62,12 @@ func (s *Server) Start() {
 		return
 	}
 	fmt.Printf("服务器在%s:%d启动成功\n", s.Ip, s.Port)
+
 	// 关闭端口
 	defer listener.Close()
+
+	go s.ListenMessager()
+
 	for {
 		// accept连接
 		conn, err := listener.Accept()
@@ -45,6 +75,7 @@ func (s *Server) Start() {
 			fmt.Println("接受连接失败:", err)
 			continue
 		}
+
 		// 处理连接
 		go s.Handler(conn)
 	}
