@@ -3,17 +3,23 @@ package main
 import (
 	"fmt"
 	"net"
+	"sync"
 )
 
 type Server struct {
-	Ip   string
-	Port int
+	Ip        string
+	Port      int
+	OnlineMap map[string]*User
+	mapLock   sync.RWMutex
+	Message   chan string
 }
 
 func NewServer(ip string, port int) *Server {
 	return &Server{
-		Ip:   ip,
-		Port: port,
+		Ip:        ip,
+		Port:      port,
+		OnlineMap: make(map[string]*User),
+		Message:   make(chan string),
 	}
 }
 

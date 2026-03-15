@@ -17,10 +17,10 @@ func NewUser(conn net.Conn) *User {
 		C:    make(chan string),
 		conn: conn,
 	}
-	go ListenMessage(user)
+	go user.ListenMessage()
 	return user
 }
-func ListenMessage(user *User) {
+func (user *User) ListenMessage() {
 	for {
 		msg := <-user.C
 		user.conn.Write([]byte(msg + "\n"))
