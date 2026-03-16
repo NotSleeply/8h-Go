@@ -24,6 +24,7 @@ func NewServer(ip string, port int) *Server {
 	}
 }
 
+// 监听Message广播消息channel的goroutine，一旦有消息就发送给全部在线User
 func (s *Server) ListenMessager() {
 	for {
 		msg := <-s.Message
@@ -35,31 +36,19 @@ func (s *Server) ListenMessager() {
 	}
 }
 
+// 广播消息
 func (s *Server) BroadCast(user *User, msg string) {
 	sendMsg := "[" + user.Addr + "]" + user.Name + ":" + msg
 	s.Message <- sendMsg
 }
 
-func (s *Server) UserOffline(user *User) {
-	s.mapLock.Lock()
-	delete(s.OnlineMap, user.Addr)
-	s.mapLock.Unlock()
-	s.BroadCast(user, "已下线！")
-}
-
-/*
-创建 4096 字节缓冲区，适配常规消息大小；
-conn.Read阻塞读取客户端消息，无消息时等待；
-读取长度为 0：代表客户端主动断开连接，触发下线；
-读取异常：打印错误并退出协程，防护服务端崩溃；
-格式化用户消息，调用广播方法转发给所有在线用户。
-*/
+// 处理用户消息
 func (s *Server) ManagerMessage(user *User) {
 	buf := make([]byte, 4096)
 	for {
 		n, err := user.conn.Read(buf)
 		if n == 0 {
-			s.UserOffline(user)
+			user.UserOffline()
 			return
 		}
 		if err != nil && err != io.EOF {
@@ -71,19 +60,10 @@ func (s *Server) ManagerMessage(user *User) {
 	}
 }
 
-/*
-创建新用户实例：基于客户端连接初始化用户对象；
-加锁将新用户加入 OnlineMap，完成「上线注册」；
-调用 BroadCast 方法，向所有在线用户推送该用户的上线通知；
-select {} 让协程永久阻塞（避免连接处理协程退出），保证用户连接持续有效。
-*/
+// 处理用户上线和下线
 func (s *Server) Handler(conn net.Conn) {
-	user := NewUser(conn)
-
-	s.mapLock.Lock()
-	s.OnlineMap[user.Name] = user
-	s.mapLock.Unlock()
-	s.BroadCast(user, "已上线！")
+	user := NewUser(conn, s)
+	user.UserOnline()
 
 	go s.ManagerMessage(user)
 
