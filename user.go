@@ -41,7 +41,22 @@ func (user *User) UserOffline() {
 
 // 用户处理消息的业务
 func (user *User) DoMessage(msg string) {
-	user.server.BroadCast(user, msg)
+	if msg == "who" {
+		user.server.mapLock.Lock()
+		for _, onlineUser := range user.server.OnlineMap {
+			onlineMsg := "[" + onlineUser.Addr + "]" + onlineUser.Name + ":在线...\n"
+			user.SendMes(onlineMsg)
+		}
+		user.server.mapLock.Unlock()
+	} else {
+		user.server.BroadCast(user, msg)
+	}
+
+}
+
+// 给当前用户对应的客户端发送消息
+func (user *User) SendMes(msg string) {
+	user.conn.Write([]byte(msg))
 }
 
 // 用户的消息广播业务
