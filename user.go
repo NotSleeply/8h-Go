@@ -44,10 +44,12 @@ func (user *User) DoMessage(msg string) {
 	if msg == "who" {
 		user.server.mapLock.Lock()
 		for _, onlineUser := range user.server.OnlineMap {
-			onlineMsg := "[" + onlineUser.Addr + "]" + onlineUser.Name + ":在线...\n"
+			// send via channel; ListenMessage will append newline
+			onlineMsg := "[" + onlineUser.Addr + "]" + onlineUser.Name + ":在线..."
 			user.SendMes(onlineMsg)
 		}
 		user.server.mapLock.Unlock()
+
 	} else if len(msg) > 7 && msg[:7] == "rename|" {
 		newName := msg[7:]
 		_, ok := user.server.OnlineMap[newName]
@@ -68,13 +70,18 @@ func (user *User) DoMessage(msg string) {
 
 // 给当前用户对应的客户端发送消息
 func (user *User) SendMes(msg string) {
-	user.conn.Write([]byte(msg))
+	// route all outgoing messages through the user's message channel
+	user.C <- msg
 }
 
 // 用户的消息广播业务
 func (user *User) ListenMessage() {
 	for {
 		msg := <-user.C
-		user.conn.Write([]byte(msg + "\n"))
+		_, err := user.conn.Write([]byte(msg + "\n"))
+		if err != nil {
+			// if write fails (client disconnected), stop this goroutine
+			return
+		}
 	}
 }

@@ -55,8 +55,14 @@ func (s *Server) ManagerMessage(user *User) {
 			fmt.Println("conn.Read err:", err)
 			return
 		}
-		msg := fmt.Sprintf("[%s]:%s", user.Addr, string(buf[:n-1]))
-		s.BroadCast(user, msg)
+		// trim possible trailing newline/carriage return
+		raw := string(buf[:n])
+		// remove trailing \r and \n
+		for len(raw) > 0 && (raw[len(raw)-1] == '\n' || raw[len(raw)-1] == '\r') {
+			raw = raw[:len(raw)-1]
+		}
+		// let user handle commands (who, rename|) or broadcast
+		user.DoMessage(raw)
 	}
 }
 
