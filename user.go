@@ -1,6 +1,9 @@
 package main
 
-import "net"
+import (
+	"net"
+	"strings"
+)
 
 type User struct {
 	Name   string
@@ -63,6 +66,29 @@ func (user *User) DoMessage(msg string) {
 			user.Name = newName
 			user.SendMes("您已更新用户名：" + user.Name)
 		}
+	} else if len(msg) > 4 && msg[:3] == "to|" {
+		// 消息格式：to|用户名|消息内容
+		// 1. 获取用户名
+		remoteName := strings.Split(msg[3:], "|")[0]
+		if remoteName == "" {
+			user.SendMes("消息格式不正确，请使用 \"to|张三|你好啊\" 格式。\n")
+			return
+		}
+		// 2. 寻找OnlineMap对应用户
+		remoteUser, ok := user.server.OnlineMap[remoteName]
+		if !ok {
+			println("用户不存在！")
+			return
+		}
+		// 3. 获取消息
+		content := strings.Split(msg, "|")[2]
+		if content == "" {
+			user.SendMes("无消息内容，请重发\n")
+			return
+		}
+		// 4. 发送消息
+		remoteUser.SendMes("您对[" + remoteUser.Name + "]说：" + content)
+
 	} else {
 		user.server.BroadCast(user, msg)
 	}
@@ -70,7 +96,6 @@ func (user *User) DoMessage(msg string) {
 
 // 给当前用户对应的客户端发送消息
 func (user *User) SendMes(msg string) {
-	// route all outgoing messages through the user's message channel
 	user.C <- msg
 }
 

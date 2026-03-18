@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 )
 
 type Server struct {
@@ -43,7 +44,7 @@ func (s *Server) BroadCast(user *User, msg string) {
 }
 
 // 处理用户消息
-func (s *Server) ManagerMessage(user *User) {
+func (s *Server) ManagerMessage(user *User, isLive chan bool) {
 	buf := make([]byte, 4096)
 	for {
 		n, err := user.conn.Read(buf)
@@ -55,14 +56,13 @@ func (s *Server) ManagerMessage(user *User) {
 			fmt.Println("conn.Read err:", err)
 			return
 		}
-		// trim possible trailing newline/carriage return
 		raw := string(buf[:n])
-		// remove trailing \r and \n
 		for len(raw) > 0 && (raw[len(raw)-1] == '\n' || raw[len(raw)-1] == '\r') {
 			raw = raw[:len(raw)-1]
 		}
-		// let user handle commands (who, rename|) or broadcast
 		user.DoMessage(raw)
+
+		isLive <- true
 	}
 }
 
@@ -71,9 +71,22 @@ func (s *Server) Handler(conn net.Conn) {
 	user := NewUser(conn, s)
 	user.UserOnline()
 
-	go s.ManagerMessage(user)
+	isLive := make(chan bool)
 
-	select {}
+	go s.ManagerMessage(user, isLive)
+
+	for {
+		select {
+		case <-isLive:
+		case <-time.After(time.Second * 300):
+			user.SendMes("你被踢了")
+
+			close(user.C)
+			conn.Close()
+
+			return
+		}
+	}
 }
 
 func (s *Server) Start() {
