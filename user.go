@@ -48,10 +48,22 @@ func (user *User) DoMessage(msg string) {
 			user.SendMes(onlineMsg)
 		}
 		user.server.mapLock.Unlock()
+	} else if len(msg) > 7 && msg[:7] == "rename|" {
+		newName := msg[7:]
+		_, ok := user.server.OnlineMap[newName]
+		if ok {
+			user.SendMes("当前用户名被占用！")
+		} else {
+			user.server.mapLock.Lock()
+			delete(user.server.OnlineMap, user.Name)
+			user.server.OnlineMap[newName] = user
+			user.server.mapLock.Unlock()
+			user.Name = newName
+			user.SendMes("您已更新用户名：" + user.Name)
+		}
 	} else {
 		user.server.BroadCast(user, msg)
 	}
-
 }
 
 // 给当前用户对应的客户端发送消息

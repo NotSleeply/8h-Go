@@ -52,7 +52,6 @@ func (this *User) Offline() {
 
 	//广播当前用户上线消息
 	this.server.BroadCast(this, "下线")
-
 }
 
 // 给当前User对应的客户端发送消息
@@ -81,7 +80,6 @@ func (this *User) DoMessage(msg string) {
 func (this *User) ListenMessage() {
 	for {
 		msg := <-this.C
-
 		this.conn.Write([]byte(msg + "\n"))
 	}
 }
