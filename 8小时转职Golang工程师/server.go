@@ -3,25 +3,59 @@ package main
 import (
 	"fmt"
 	"net"
+	"sync"
 )
 
 type Server struct {
 	Ip   string
 	Port int
+
+	// 上线列表
+	OnlineMap map[string]*User
+	MapLock   sync.RWMutex // 读多写少 锁
+	// 消息
+	Message chan string
 }
 
 // 初始化
 func NewServer(ip string, port int) *Server {
 	server := &Server{
-		Ip:   ip,
-		Port: port,
+		Ip:        ip,
+		Port:      port,
+		OnlineMap: make(map[string]*User),
+		Message:   make(chan string),
 	}
 	return server
 }
 
+// 广播消息 格式
+func (s *Server) BoradCast(user *User, msg string) {
+	sendMsg := "[" + user.Addr + "]" + user.Name + ":" + msg
+	s.Message <- sendMsg
+}
+
+// 消息广播分发
+func (s *Server) ListenMessager() {
+	for {
+		msg := <-s.Message
+		s.MapLock.Lock()
+		for _, cli := range s.OnlineMap {
+			cli.C <- msg
+		}
+		s.MapLock.Unlock()
+	}
+}
+
 // 处理链接
 func (s *Server) Handler(conn net.Conn) {
-	fmt.Println("有客户端链接成功")
+	user := NewUser(conn)
+	s.MapLock.Lock()
+	s.OnlineMap[user.Name] = user
+	s.MapLock.Unlock()
+
+	s.BoradCast(user, "上线了!")
+
+	select {}
 }
 
 // 启动
@@ -33,6 +67,9 @@ func (s *Server) Start() {
 	}
 	fmt.Println("启动成功---", fmt.Sprintf("%s:%d", s.Ip, s.Port))
 	defer listener.Close()
+
+	go s.ListenMessager()
+
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
