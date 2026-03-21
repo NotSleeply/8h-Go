@@ -61,7 +61,7 @@ func (s *Server) ManagerMessage(user *User) {
 			println("ManagerMessage:", err)
 			return
 		}
-		rawMsg := string(buf[:n-1])
+		rawMsg := string(buf[:n])
 		rawMsg = strings.TrimSpace(rawMsg)
 		user.DoMessage(rawMsg)
 	}
