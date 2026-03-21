@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"sync"
 )
@@ -46,14 +47,30 @@ func (s *Server) ListenMessager() {
 	}
 }
 
+// 消息处理
+func (s *Server) ManagerMessage(user *User) {
+	buf := make([]byte, 4096)
+	for {
+		n, err := user.Conn.Read(buf)
+		if n == 0 {
+			user.Offline()
+			return
+		}
+		if err!= nil &&err!=io.EOF{
+			println("ManagerMessage:",err)
+			return
+		}
+		msg := fmt.Sprintf("[%s]:[%s]",user.Addr,string(buf[:n-1]))
+		s.BoradCast(user,msg)
+	}
+}
+
 // 处理链接
 func (s *Server) Handler(conn net.Conn) {
-	user := NewUser(conn)
-	s.MapLock.Lock()
-	s.OnlineMap[user.Name] = user
-	s.MapLock.Unlock()
+	user := NewUser(conn, s)
+	user.Online()
 
-	s.BoradCast(user, "上线了!")
+	go s.ManagerMessage(user)
 
 	select {}
 }
