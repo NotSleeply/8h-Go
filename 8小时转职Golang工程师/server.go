@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 )
 
@@ -56,12 +57,13 @@ func (s *Server) ManagerMessage(user *User) {
 			user.Offline()
 			return
 		}
-		if err!= nil &&err!=io.EOF{
-			println("ManagerMessage:",err)
+		if err != nil && err != io.EOF {
+			println("ManagerMessage:", err)
 			return
 		}
-		msg := fmt.Sprintf("[%s]:[%s]",user.Addr,string(buf[:n-1]))
-		s.BoradCast(user,msg)
+		rawMsg := string(buf[:n-1])
+		rawMsg = strings.TrimSpace(rawMsg)
+		user.DoMessage(rawMsg)
 	}
 }
 

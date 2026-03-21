@@ -3,21 +3,21 @@ package main
 import "net"
 
 type User struct {
-	Name string
-	Addr string
-	C    chan string
-	Conn net.Conn
+	Name   string
+	Addr   string
+	C      chan string
+	Conn   net.Conn
 	Server *Server
 }
 
 // 初始化
-func NewUser(conn net.Conn,s *Server) *User {
+func NewUser(conn net.Conn, s *Server) *User {
 	userAddr := conn.RemoteAddr().String()
 	user := &User{
-		Name: userAddr,
-		Addr: userAddr,
-		C:    make(chan string),
-		Conn: conn,
+		Name:   userAddr,
+		Addr:   userAddr,
+		C:      make(chan string),
+		Conn:   conn,
 		Server: s,
 	}
 	go user.ListenMessage()
@@ -33,24 +33,40 @@ func (u *User) ListenMessage() {
 }
 
 // 上线
-func (u *User) Online(){
+func (u *User) Online() {
 	u.Server.MapLock.Lock()
 	u.Server.OnlineMap[u.Name] = u
 	u.Server.MapLock.Unlock()
 
-	u.Server.BoradCast(u,"已上线！")
+	u.Server.BoradCast(u, "已上线！")
 }
 
 // 下线
-func (u *User) Offline(){
+func (u *User) Offline() {
 	u.Server.MapLock.Lock()
-	delete(u.Server.OnlineMap,u.Name)
+	delete(u.Server.OnlineMap, u.Name)
 	u.Server.MapLock.Unlock()
 
-	u.Server.BoradCast(u,"已下线！")
+	u.Server.BoradCast(u, "已下线！")
+}
+
+// 私发消息
+func (u *User) SendMsg(msg string) {
+	u.Conn.Write([]byte(msg))
 }
 
 // user层处理信息
-func (u *User)DoMessage(msg string){
-	u.Server.BoradCast(u,msg);
+func (u *User) DoMessage(msg string) {
+	
+	if msg == "who" {
+		u.Server.MapLock.Lock()
+		for _, user := range u.Server.OnlineMap {
+			msg := "[" + user.Addr + "]" + user.Name + ":" + "在线中…" + "\n"
+			u.SendMsg(msg)
+		}
+		u.Server.MapLock.Unlock()
+
+	} else {
+		u.Server.BoradCast(u, msg)
+	}
 }
