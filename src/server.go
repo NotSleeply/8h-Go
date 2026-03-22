@@ -4,115 +4,108 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
 
 type Server struct {
-	Ip        string
-	Port      int
+	Ip   string
+	Port int
+
+	// 上线列表
 	OnlineMap map[string]*User
-	mapLock   sync.RWMutex
-	Message   chan string
+	MapLock   sync.RWMutex // 读多写少 锁
+	// 消息
+	Message chan string
 }
 
+// 初始化
 func NewServer(ip string, port int) *Server {
-	return &Server{
+	server := &Server{
 		Ip:        ip,
 		Port:      port,
 		OnlineMap: make(map[string]*User),
 		Message:   make(chan string),
 	}
+	return server
 }
 
-// 监听Message广播消息channel的goroutine，一旦有消息就发送给全部在线User
-func (s *Server) ListenMessager() {
-	for {
-		msg := <-s.Message
-		s.mapLock.Lock()
-		for _, cli := range s.OnlineMap {
-			cli.C <- msg
-		}
-		s.mapLock.Unlock()
-	}
-}
-
-// 广播消息
-func (s *Server) BroadCast(user *User, msg string) {
+// 广播消息 格式
+func (s *Server) BoradCast(user *User, msg string) {
 	sendMsg := "[" + user.Addr + "]" + user.Name + ":" + msg
 	s.Message <- sendMsg
 }
 
-// 处理用户消息
+// 消息广播分发
+func (s *Server) ListenMessager() {
+	for {
+		msg := <-s.Message
+		s.MapLock.Lock()
+		for _, cli := range s.OnlineMap {
+			cli.C <- msg
+		}
+		s.MapLock.Unlock()
+	}
+}
+
+// 消息处理
 func (s *Server) ManagerMessage(user *User, isLive chan bool) {
 	buf := make([]byte, 4096)
 	for {
-		n, err := user.conn.Read(buf)
+		n, err := user.Conn.Read(buf)
 		if n == 0 {
-			user.UserOffline()
+			user.Offline()
 			return
 		}
 		if err != nil && err != io.EOF {
-			fmt.Println("conn.Read err:", err)
+			println("ManagerMessage:", err)
 			return
 		}
-		raw := string(buf[:n])
-		for len(raw) > 0 && (raw[len(raw)-1] == '\n' || raw[len(raw)-1] == '\r') {
-			raw = raw[:len(raw)-1]
-		}
-		user.DoMessage(raw)
-
+		rawMsg := string(buf[:n])
+		rawMsg = strings.TrimSpace(rawMsg)
+		user.DoMessage(rawMsg)
 		isLive <- true
 	}
 }
 
-// 处理用户上线和下线
+// 处理链接
 func (s *Server) Handler(conn net.Conn) {
 	user := NewUser(conn, s)
-	user.UserOnline()
-
+	user.Online()
 	isLive := make(chan bool)
 
 	go s.ManagerMessage(user, isLive)
-
 	for {
 		select {
 		case <-isLive:
 		case <-time.After(time.Second * 300):
-			user.SendMes("你被踢了")
-
+			user.SendMsg("你被踢了!")
 			close(user.C)
 			conn.Close()
-
 			return
 		}
 	}
 }
 
+// 启动
 func (s *Server) Start() {
-	// 监听端口
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", s.Ip, s.Port))
 	if err != nil {
-		fmt.Println("监听端口失败:", err)
+		fmt.Println("启动失败")
 		return
 	}
-	fmt.Printf("服务器在%s:%d启动成功\n", s.Ip, s.Port)
-
-	// 关闭端口
+	fmt.Println("启动成功---", fmt.Sprintf("%s:%d", s.Ip, s.Port))
 	defer listener.Close()
 
 	go s.ListenMessager()
 
 	for {
-		// accept连接
 		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Println("接受连接失败:", err)
+			fmt.Println("Accept,接受客户端的连接请求出现问题")
 			continue
 		}
-
-		// 处理连接
 		go s.Handler(conn)
 	}
-
 }
