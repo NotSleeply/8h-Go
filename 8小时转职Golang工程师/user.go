@@ -87,12 +87,35 @@ func (u *User) useRename(msg string) {
 	}
 }
 
+// 私聊
+func (u *User) useChat(msg string) {
+	toName := strings.Split(msg,"|")[1]
+	if toName ==""{
+		u.SendMsg("信息格式不对!")
+		return
+	}
+	toUser,ok :=u.Server.OnlineMap[toName]
+	if !ok {
+		u.SendMsg("发送对象不存在!")
+		return
+	}
+	toMsg := strings.Split(msg,"|")[2]
+	if toMsg ==""{
+		u.SendMsg("无发送内容!")
+		return
+	}
+	toMsg = u.Name+"-->"+toMsg+"\n"
+	toUser.SendMsg(toMsg)
+}
+
 // user层处理信息
 func (u *User) DoMessage(msg string) {
 	if msg == "who" {
 		u.useWho()
-	} else if len(msg) > 7 && msg[:7] == "rename|" {
+	} else if len(msg) > 7 && msg[:7] == "rename|" { // rename|msg
 		u.useRename(msg)
+	} else if len(msg) > 4 && msg[:3] == "to|" { // to|toName|msg
+		u.useChat(msg)
 	} else {
 		u.Server.BoradCast(u, msg)
 	}
