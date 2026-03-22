@@ -58,34 +58,41 @@ func (u *User) SendMsg(msg string) {
 	u.Conn.Write([]byte(msg))
 }
 
-// user层处理信息
-func (u *User) DoMessage(msg string) {
+// 查询在线用户
+func (u *User) useWho() {
+	u.Server.MapLock.Lock()
+	for _, user := range u.Server.OnlineMap {
+		msg := "[" + user.Addr + "]" + user.Name + ":" + "在线中…" + "\n"
+		u.SendMsg(msg)
+	}
+	u.Server.MapLock.Unlock()
+}
 
-	if msg == "who" {
+// 更改姓名
+func (u *User) useRename(msg string) {
+	newName := strings.Split(msg, "|")[1]
+	_, ok := u.Server.OnlineMap[newName]
+	if ok {
+		u.SendMsg("此名称已被占用!")
+	} else {
+		oldName := u.Name
 		u.Server.MapLock.Lock()
-		for _, user := range u.Server.OnlineMap {
-			msg := "[" + user.Addr + "]" + user.Name + ":" + "在线中…" + "\n"
-			u.SendMsg(msg)
-		}
+		delete(u.Server.OnlineMap, u.Name)
+		u.Server.OnlineMap[newName] = u
 		u.Server.MapLock.Unlock()
 
+		u.Name = newName
+		newMsg := "已将" + oldName + "更改为:" + newName + "\n"
+		u.SendMsg(newMsg)
+	}
+}
+
+// user层处理信息
+func (u *User) DoMessage(msg string) {
+	if msg == "who" {
+		u.useWho()
 	} else if len(msg) > 7 && msg[:7] == "rename|" {
-		newName := strings.Split(msg, "|")[1]
-		_, ok := u.Server.OnlineMap[newName]
-		if ok {
-			u.SendMsg("此名称已被占用!")
-		} else {
-			oldName:= u.Name
-			u.Server.MapLock.Lock()
-			delete(u.Server.OnlineMap,u.Name)
-			u.Server.OnlineMap[newName]=u
-			u.Server.MapLock.Unlock()
-
-			u.Name = newName
-			newMsg := "已将"+oldName+"更改为:"+newName+"\n"
-			u.SendMsg(newMsg)
-		}
-
+		u.useRename(msg)
 	} else {
 		u.Server.BoradCast(u, msg)
 	}
