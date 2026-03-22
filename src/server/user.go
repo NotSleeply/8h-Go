@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"net"
@@ -89,22 +89,22 @@ func (u *User) useRename(msg string) {
 
 // 私聊
 func (u *User) useChat(msg string) {
-	toName := strings.Split(msg,"|")[1]
-	if toName ==""{
+	toName := strings.Split(msg, "|")[1]
+	if toName == "" {
 		u.SendMsg("信息格式不对!")
 		return
 	}
-	toUser,ok :=u.Server.OnlineMap[toName]
+	toUser, ok := u.Server.OnlineMap[toName]
 	if !ok {
 		u.SendMsg("发送对象不存在!")
 		return
 	}
-	toMsg := strings.Split(msg,"|")[2]
-	if toMsg ==""{
+	toMsg := strings.Split(msg, "|")[2]
+	if toMsg == "" {
 		u.SendMsg("无发送内容!")
 		return
 	}
-	toMsg = u.Name+"-->"+toMsg+"\n"
+	toMsg = u.Name + "-->" + toMsg + "\n"
 	toUser.SendMsg(toMsg)
 }
 
