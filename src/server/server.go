@@ -43,7 +43,11 @@ func (s *Server) ListenMessager() {
 		msg := <-s.Message
 		s.MapLock.Lock()
 		for _, cli := range s.OnlineMap {
-			cli.C <- msg
+			select {
+			case cli.C <- msg:
+			default:
+				fmt.Println("User", cli.Name, "channel is full, message dropped.")
+			}
 		}
 		s.MapLock.Unlock()
 	}
