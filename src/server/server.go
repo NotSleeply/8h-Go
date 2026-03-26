@@ -45,8 +45,10 @@ func (s *Server) ListenMessager() {
 		for _, cli := range s.OnlineMap {
 			select {
 			case cli.C <- msg:
-			default:
-				fmt.Println("User", cli.Name, "channel is full, message dropped.")
+			case <-time.After(time.Second * 1):
+				// 1秒内无法发送，判定网络拥塞，断开用户
+				close(cli.C)
+				cli.Conn.Close()
 			}
 		}
 		s.MapLock.Unlock()
