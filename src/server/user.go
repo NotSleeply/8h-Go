@@ -6,12 +6,13 @@ import (
 )
 
 type User struct {
-	Name      string
-	Addr      string
-	C         chan string
-	Conn      net.Conn
-	Server    *Server
-	closeOnce sync.Once
+	Name       string
+	Addr       string
+	C          chan string
+	Conn       net.Conn
+	Server     *Server
+	closeOnce  sync.Once
+	logoutOnce sync.Once
 }
 
 // 初始化
@@ -64,8 +65,10 @@ func (u *User) Offline() {
 
 // 注销用户：下线并释放资源
 func (u *User) Logout() {
-	u.Offline()
-	u.Close()
+	u.logoutOnce.Do(func() {
+		u.Offline()
+		u.Close()
+	})
 }
 
 // 私发消息
