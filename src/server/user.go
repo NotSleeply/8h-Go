@@ -37,6 +37,7 @@ func (u *User) Online() {
 	u.Server.MapLock.Lock()
 	u.Server.OnlineMap[u.Name] = u
 	u.Server.MapLock.Unlock()
+	u.SendMsg("----------------👏欢迎来到 8H-Go 聊天室----------------\n")
 
 	u.Server.BoradCast(u, "已上线！")
 }
