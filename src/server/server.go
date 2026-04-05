@@ -1,6 +1,8 @@
 package server
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"net"
@@ -19,6 +21,8 @@ type Server struct {
 	// 消息
 	Message chan string
 }
+
+const MaxMessageLength = 1024 // 定义最大消息长度
 
 // 初始化
 func NewServer(ip string, port int) *Server {
@@ -58,22 +62,59 @@ func (s *Server) ListenMessager() {
 // 消息处理
 func (s *Server) ManagerMessage(user *User, isLive chan bool) {
 	defer close(isLive)
-	buf := make([]byte, 4096)
+
+	reader := bufio.NewReader(user.Conn)
 	for {
-		n, err := user.Conn.Read(buf)
-		if n == 0 {
-			user.Logout()
-			return
+		// 设置读超时，避免被卡住（根据需求调整）
+		user.Conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
+
+		var parts [][]byte
+		total := 0
+		for {
+			chunk, isPrefix, err := reader.ReadLine()
+			if err != nil {
+				if err == io.EOF {
+					user.Logout()
+					return
+				}
+				println("ManagerMessage:", err.Error())
+				user.Logout()
+				return
+			}
+
+			total += len(chunk)
+			if total > MaxMessageLength {
+				// 如果当前行还未读完，继续读并丢弃直到行结束
+				if isPrefix {
+					for isPrefix {
+						_, isPrefix, err = reader.ReadLine()
+						if err != nil {
+							if err == io.EOF {
+								user.Logout()
+								return
+							}
+							println("ManagerMessage:", err.Error())
+							user.Logout()
+							return
+						}
+					}
+				}
+				user.SendMsg(fmt.Sprintf("消息长度超限，最多 %d 字节，本条已丢弃。\n", MaxMessageLength))
+				// 丢弃本条，进入下一条读取
+				break
+			}
+
+			parts = append(parts, chunk)
+			if !isPrefix {
+				msg := strings.TrimSpace(string(bytes.Join(parts, nil)))
+				if msg != "" {
+					user.DoMessage(msg)
+					isLive <- true
+				}
+				break
+			}
+			// 若 isPrefix 为 true，继续循环读取该行剩余部分
 		}
-		if err != nil && err != io.EOF {
-			println("ManagerMessage:", err)
-			user.Logout()
-			return
-		}
-		rawMsg := string(buf[:n])
-		rawMsg = strings.TrimSpace(rawMsg)
-		user.DoMessage(rawMsg)
-		isLive <- true
 	}
 }
 
