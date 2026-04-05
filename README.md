@@ -27,19 +27,3 @@ go run main.go
 ```bash
 nc 127.0.0.1 8888
 ```
-
-## 使用说明
-
-- 发送任意文本作为广播消息
-- `who`：查看当前在线用户
-- `rename|新昵称`：修改当前用户名
-- `to|用户名|消息`：发送私聊消息给指定用户
-
-示例：
-
-```text
-who
-rename|alice
-to|bob|你好，Bob
-hello everyone
-```
