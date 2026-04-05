@@ -2,6 +2,7 @@ package server
 
 import (
 	"net"
+	"strings"
 	"sync"
 )
 
@@ -78,14 +79,19 @@ func (u *User) SendMsg(msg string) {
 
 // user层处理信息
 func (u *User) DoMessage(msg string) {
-	if msg == "exit" {
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		return
+	} else if msg == "exit" {
 		u.useExit(msg)
 	} else if msg == "who" {
 		u.useWho()
-	} else if len(msg) > 7 && msg[:7] == "rename|" { // rename|msg
+	} else if strings.HasPrefix(msg, "rename|") { // rename|msg
 		u.useRename(msg)
-	} else if len(msg) > 4 && msg[:3] == "to|" { // to|toName|msg
+	} else if strings.HasPrefix(msg, "to|") { // to|toName|msg
 		u.useChat(msg)
+	} else if strings.Contains(msg, "|") {
+		u.useIllegal(msg)
 	} else {
 		u.Server.BoradCast(u, msg)
 	}

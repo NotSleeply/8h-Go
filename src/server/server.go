@@ -102,7 +102,7 @@ func (s *Server) Handler(conn net.Conn) {
 func (s *Server) Start() {
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", s.Ip, s.Port))
 	if err != nil {
-		fmt.Println("启动失败")
+		fmt.Println("启动失败:", err)
 		return
 	}
 	fmt.Println("启动成功---", fmt.Sprintf("%s:%d", s.Ip, s.Port))
@@ -113,7 +113,7 @@ func (s *Server) Start() {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Println("Accept,接受客户端的连接请求出现问题")
+			fmt.Println("Accept,接受客户端的连接请求出现问题:", err)
 			continue
 		}
 		go s.Handler(conn)
