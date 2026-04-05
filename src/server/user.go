@@ -46,7 +46,7 @@ func (u *User) Online() {
 
 // 下线
 func (u *User) Offline() {
-	ctext := u.Name + "再见！ 👋\n"
+	ctext := u.Name + "👋再见!"
 	u.SendMsg(ctext)
 
 	u.Server.MapLock.Lock()
