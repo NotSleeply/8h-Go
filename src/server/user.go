@@ -1,6 +1,8 @@
 package server
 
-import "net"
+import (
+	"net"
+)
 
 type User struct {
 	Name   string
@@ -44,6 +46,9 @@ func (u *User) Online() {
 
 // 下线
 func (u *User) Offline() {
+	ctext := u.Name + "再见！ 👋\n"
+	u.SendMsg(ctext)
+
 	u.Server.MapLock.Lock()
 	delete(u.Server.OnlineMap, u.Name)
 	u.Server.MapLock.Unlock()
