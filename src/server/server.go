@@ -57,15 +57,17 @@ func (s *Server) ListenMessager() {
 
 // 消息处理
 func (s *Server) ManagerMessage(user *User, isLive chan bool) {
+	defer close(isLive)
 	buf := make([]byte, 4096)
 	for {
 		n, err := user.Conn.Read(buf)
 		if n == 0 {
-			user.Offline()
+			user.Logout()
 			return
 		}
 		if err != nil && err != io.EOF {
 			println("ManagerMessage:", err)
+			user.Logout()
 			return
 		}
 		rawMsg := string(buf[:n])
@@ -84,11 +86,13 @@ func (s *Server) Handler(conn net.Conn) {
 	go s.ManagerMessage(user, isLive)
 	for {
 		select {
-		case <-isLive:
+		case _, ok := <-isLive:
+			if !ok {
+				return
+			}
 		case <-time.After(time.Second * 300):
-			user.SendMsg("你被踢了!")
-			close(user.C)
-			conn.Close()
+			user.SendMsg("你被踢了!\n")
+			user.Logout()
 			return
 		}
 	}

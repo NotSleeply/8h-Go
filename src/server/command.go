@@ -58,3 +58,9 @@ func (u *User) useChat(msg string) {
 	sendText := u.Name + " --> " + toMsg + "\n"
 	toUser.SendMsg(sendText)
 }
+
+// 退出聊天室
+func (u *User) useExit(msg string) {
+	u.SendMsg("再见！欢迎下次再来~\n")
+	u.Logout()
+}
