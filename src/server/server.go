@@ -43,25 +43,45 @@ func (s *Server) BoradCast(user *User, msg string) {
 
 // 消息广播分发
 func (s *Server) ListenMessager() {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("panic in ListenMessager:", r)
+		}
+	}()
 	for {
 		msg := <-s.Message
-		s.MapLock.Lock()
+		s.MapLock.RLock()
+		var toKick []*User
 		for _, cli := range s.OnlineMap {
 			select {
 			case cli.C <- msg:
 			case <-time.After(time.Second * 1):
-				// 1秒内无法发送，判定网络拥塞，断开用户
-				close(cli.C)
-				cli.Conn.Close()
+				// 1秒内无法发送，判定网络拥塞，记录待踢出的用户
+				toKick = append(toKick, cli)
 			}
 		}
-		s.MapLock.Unlock()
+		s.MapLock.RUnlock()
+
+		// 在释放锁后统一处理需要断开的用户，避免在持锁时调用会再次获取锁的方法
+		for _, u := range toKick {
+			select {
+			case u.C <- "系统：检测到网络拥塞，您将被断开。\n":
+			default:
+			}
+			go u.Logout()
+		}
 	}
 }
 
 // 消息处理
 func (s *Server) ManagerMessage(user *User, isLive chan bool) {
-	defer close(isLive)
+	defer func() {
+		if r := recover(); r != nil {
+			println("panic in ManagerMessage:", r)
+			user.Logout()
+		}
+		close(isLive)
+	}()
 
 	reader := bufio.NewReader(user.Conn)
 	for {

@@ -34,6 +34,7 @@ func (u *User) useRename(msg string) {
 
 	u.Server.MapLock.Lock()
 	if _, ok := u.Server.OnlineMap[newName]; ok {
+		u.Server.MapLock.Unlock()
 		u.SendMsg("该昵称已被占用，请选择其他昵称。例如：rename|bob\n")
 		return
 	}

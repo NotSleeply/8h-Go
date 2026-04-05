@@ -4,6 +4,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 )
 
 type User struct {
@@ -30,10 +31,30 @@ func NewUser(conn net.Conn, s *Server) *User {
 	return user
 }
 
+// 写入消息
+func (u *User) writeWithPrompt(msg string) error {
+	u.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	if _, err := u.Conn.Write([]byte(msg + "\n")); err != nil {
+		return err
+	}
+	if _, err := u.Conn.Write([]byte("> ")); err != nil {
+		return err
+	}
+	return nil
+}
+
 // 监听用户信息
 func (u *User) ListenMessage() {
+	defer func() {
+		if r := recover(); r != nil {
+			// 忽略 panic（例如向已关闭的 channel 发送）
+		}
+	}()
 	for msg := range u.C {
-		u.Conn.Write([]byte(msg + "\n"))
+		if err := u.writeWithPrompt(msg); err != nil {
+			u.Logout()
+			return
+		}
 	}
 }
 
@@ -74,7 +95,16 @@ func (u *User) Logout() {
 
 // 私发消息
 func (u *User) SendMsg(msg string) {
-	u.Conn.Write([]byte(msg))
+	defer func() {
+		if r := recover(); r != nil {
+			// 忽略向已关闭 channel 发送导致的 panic
+		}
+	}()
+	select {
+	case u.C <- msg:
+	case <-time.After(2 * time.Second):
+		go u.Logout()
+	}
 }
 
 // user层处理信息
