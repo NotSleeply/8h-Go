@@ -1,19 +1,45 @@
-# [8小时转go](https://www.bilibili.com/video/BV1gf4y1r79E)
+# 8h-Go 聊天服务端
 
-[8小时转职Golang工程师](https://www.yuque.com/aceld/mo95lb/dsk886)
+本项目是一个简单的基于 TCP 的聊天室服务端示例，来自「[8小时转go](https://www.bilibili.com/video/BV1gf4y1r79E)」学习实践。项目实现了用户上线/下线、广播消息、私聊和改名功能，适合用来学习 Go 并发、网络编程和通道设计。
 
 [学习笔记](https://juejin.cn/post/7617013574440501289)
 
-## 项目启动
+## 功能
 
-启动：
+- TCP 服务端监听 `127.0.0.1:8888`
+- 用户连接后自动上线
+- 支持广播消息给所有在线用户
+- 支持私聊命令 `to|用户名|消息`
+- 支持改名命令 `rename|新昵称`
+- 支持查看在线用户命令 `who`
+- 支持超时踢人机制
+
+## 快速启动
 
 ```bash
 go run main.go
 ```
 
-测试服务端：
+## 测试连接
+
+在另一个终端使用 `nc` 连接：
 
 ```bash
 nc 127.0.0.1 8888
+```
+
+## 使用说明
+
+- 发送任意文本作为广播消息
+- `who`：查看当前在线用户
+- `rename|新昵称`：修改当前用户名
+- `to|用户名|消息`：发送私聊消息给指定用户
+
+示例：
+
+```text
+who
+rename|alice
+to|bob|你好，Bob
+hello everyone
 ```
