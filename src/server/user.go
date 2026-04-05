@@ -1,9 +1,6 @@
 package server
 
-import (
-	"net"
-	"strings"
-)
+import "net"
 
 type User struct {
 	Name   string
@@ -56,56 +53,6 @@ func (u *User) Offline() {
 // 私发消息
 func (u *User) SendMsg(msg string) {
 	u.Conn.Write([]byte(msg))
-}
-
-// 查询在线用户
-func (u *User) useWho() {
-	u.Server.MapLock.Lock()
-	for _, user := range u.Server.OnlineMap {
-		msg := "[" + user.Addr + "]" + user.Name + ":" + "在线中…" + "\n"
-		u.SendMsg(msg)
-	}
-	u.Server.MapLock.Unlock()
-}
-
-// 更改姓名
-func (u *User) useRename(msg string) {
-	newName := strings.Split(msg, "|")[1]
-	_, ok := u.Server.OnlineMap[newName]
-	if ok {
-		u.SendMsg("此名称已被占用!")
-	} else {
-		oldName := u.Name
-		u.Server.MapLock.Lock()
-		delete(u.Server.OnlineMap, u.Name)
-		u.Server.OnlineMap[newName] = u
-		u.Server.MapLock.Unlock()
-
-		u.Name = newName
-		newMsg := "已将" + oldName + "更改为:" + newName + "\n"
-		u.SendMsg(newMsg)
-	}
-}
-
-// 私聊
-func (u *User) useChat(msg string) {
-	toName := strings.Split(msg, "|")[1]
-	if toName == "" {
-		u.SendMsg("信息格式不对!")
-		return
-	}
-	toUser, ok := u.Server.OnlineMap[toName]
-	if !ok {
-		u.SendMsg("发送对象不存在!")
-		return
-	}
-	toMsg := strings.Split(msg, "|")[2]
-	if toMsg == "" {
-		u.SendMsg("无发送内容!")
-		return
-	}
-	toMsg = u.Name + "-->" + toMsg + "\n"
-	toUser.SendMsg(toMsg)
 }
 
 // user层处理信息
