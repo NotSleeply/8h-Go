@@ -19,8 +19,6 @@ type Server struct {
 	// 上线列表
 	OnlineMap map[string]*User
 	MapLock   sync.RWMutex // 读多写少 锁
-	// 消息
-	Message chan string
 
 	// Structured delivery queue and in-memory store for ACKs
 	DeliverQueue chan string
@@ -35,49 +33,10 @@ func NewServer(ip string, port int) *Server {
 		Ip:           ip,
 		Port:         port,
 		OnlineMap:    make(map[string]*User),
-		Message:      make(chan string),
 		DeliverQueue: make(chan string, 1024),
 		store:        NewInMemoryStore(),
 	}
 	return server
-}
-
-// 广播消息 格式
-func (s *Server) BoradCast(user *User, msg string) {
-	sendMsg := "[" + user.Addr + "]" + user.Name + ":" + msg
-	s.Message <- sendMsg
-}
-
-// 消息广播分发
-func (s *Server) ListenMessager() {
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Println("panic in ListenMessager:", r)
-		}
-	}()
-	for {
-		msg := <-s.Message
-		s.MapLock.RLock()
-		var toKick []*User
-		for _, cli := range s.OnlineMap {
-			select {
-			case cli.C <- msg:
-			case <-time.After(time.Second * 1):
-				// 1秒内无法发送，判定网络拥塞，记录待踢出的用户
-				toKick = append(toKick, cli)
-			}
-		}
-		s.MapLock.RUnlock()
-
-		// 在释放锁后统一处理需要断开的用户，避免在持锁时调用会再次获取锁的方法
-		for _, u := range toKick {
-			select {
-			case u.C <- "系统：检测到网络拥塞，您将被断开。\n":
-			default:
-			}
-			go u.Logout()
-		}
-	}
 }
 
 // 消息处理
@@ -160,7 +119,7 @@ func (s *Server) ManagerMessage(user *User, isLive chan bool) {
 func (s *Server) Handler(conn net.Conn) {
 	user := NewUser(conn, s)
 	user.Online()
-	isLive := make(chan bool)
+	isLive := make(chan bool, 1) // 修复协程泄漏问题
 
 	go s.ManagerMessage(user, isLive)
 	for {
@@ -174,29 +133,6 @@ func (s *Server) Handler(conn net.Conn) {
 			user.Logout()
 			return
 		}
-	}
-}
-
-// 启动
-func (s *Server) Start() {
-	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", s.Ip, s.Port))
-	if err != nil {
-		fmt.Println("启动失败:", err)
-		return
-	}
-	fmt.Println("启动成功---", fmt.Sprintf("%s:%d", s.Ip, s.Port))
-	defer listener.Close()
-
-	go s.ListenMessager()
-	go s.DeliverWorker()
-
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			fmt.Println("Accept,接受客户端的连接请求出现问题:", err)
-			continue
-		}
-		go s.Handler(conn)
 	}
 }
 
@@ -271,4 +207,62 @@ func (s *Server) HandleDeliverAck(u *User, m *Message) {
 		return
 	}
 	s.store.MarkDeliveryAcked(m.ServerMsgID, u.Name)
+}
+
+// 在系统范围发送一条消息（可排除某个用户名），并返回 serverMsgID 与 seq
+func (s *Server) BroadcastSystemEvent(body string, exclude string) (serverMsgID string, seq uint64) {
+	// 分配 seq（对 system 用一个独立 chat id，比如 "system"）
+	seq, _ = s.store.NextSeq("system")
+	serverMsgID = fmt.Sprintf("sys-%d", time.Now().UnixNano())
+
+	msg := &Message{
+		Type:        TypeDeliver,
+		ServerMsgID: serverMsgID,
+		ChatID:      "system",
+		From:        "system",
+		Body:        body,
+		Seq:         seq,
+		Ts:          time.Now().Unix(),
+	}
+	s.store.SaveMessage(msg)
+
+	// 把 pending delivery 记录写给当前在线用户（可排除触发者）
+	s.MapLock.RLock()
+	for name := range s.OnlineMap {
+		if name == exclude {
+			continue
+		}
+		s.store.SaveDelivery(serverMsgID, name)
+	}
+	s.MapLock.RUnlock()
+
+	// 推入投递队列，让 DeliverWorker 去发送
+	select {
+	case s.DeliverQueue <- serverMsgID:
+	default:
+		// 若队列满，可记录日志或退避；这里为简化直接丢弃
+	}
+	return
+}
+
+// 启动
+func (s *Server) Start() {
+	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", s.Ip, s.Port))
+	if err != nil {
+		fmt.Println("启动失败:", err)
+		return
+	}
+	fmt.Println("启动成功---", fmt.Sprintf("%s:%d", s.Ip, s.Port))
+	defer listener.Close()
+
+	go s.DeliverWorker()
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Println("Accept,接受客户端的连接请求出现问题:", err)
+			continue
+		}
+		go s.Handler(conn)
+	}
 }
