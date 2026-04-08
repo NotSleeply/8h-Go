@@ -1,6 +1,8 @@
 package server
 
 import (
+	"encoding/json"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -107,6 +109,18 @@ func (u *User) SendMsg(msg string) {
 	}
 }
 
+// SendJSON marshals a protocol Message and sends it to the user's channel.
+func (u *User) SendJSON(m *Message) {
+	if m == nil {
+		return
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return
+	}
+	u.SendMsg(string(b))
+}
+
 // user层处理信息
 func (u *User) DoMessage(msg string) {
 	msg = strings.TrimSpace(msg)
@@ -123,6 +137,15 @@ func (u *User) DoMessage(msg string) {
 	} else if strings.Contains(msg, "|") {
 		u.useIllegal(msg)
 	} else {
-		u.Server.BoradCast(u, msg)
+		// 将普通文本消息封装为协议 send，走 ACK 流程
+		clientID := fmt.Sprintf("c-%d", time.Now().UnixNano())
+		req := &Message{
+			Type:        TypeSend,
+			ClientMsgID: clientID,
+			ChatID:      "",
+			From:        u.Name,
+			Body:        msg,
+		}
+		u.Server.HandleClientSend(u, req)
 	}
 }

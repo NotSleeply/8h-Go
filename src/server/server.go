@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -20,6 +21,10 @@ type Server struct {
 	MapLock   sync.RWMutex // 读多写少 锁
 	// 消息
 	Message chan string
+
+	// Structured delivery queue and in-memory store for ACKs
+	DeliverQueue chan string
+	store        *InMemoryStore
 }
 
 const MaxMessageLength = 1024 // 定义最大消息长度
@@ -27,10 +32,12 @@ const MaxMessageLength = 1024 // 定义最大消息长度
 // 初始化
 func NewServer(ip string, port int) *Server {
 	server := &Server{
-		Ip:        ip,
-		Port:      port,
-		OnlineMap: make(map[string]*User),
-		Message:   make(chan string),
+		Ip:           ip,
+		Port:         port,
+		OnlineMap:    make(map[string]*User),
+		Message:      make(chan string),
+		DeliverQueue: make(chan string, 1024),
+		store:        NewInMemoryStore(),
 	}
 	return server
 }
@@ -126,10 +133,21 @@ func (s *Server) ManagerMessage(user *User, isLive chan bool) {
 
 			parts = append(parts, chunk)
 			if !isPrefix {
-				msg := strings.TrimSpace(string(bytes.Join(parts, nil)))
-				if msg != "" {
-					user.DoMessage(msg)
-					isLive <- true
+				msgStr := strings.TrimSpace(string(bytes.Join(parts, nil)))
+				if msgStr != "" {
+					// 支持最小 JSON 协议：{...}
+					if strings.HasPrefix(msgStr, "{") {
+						var pm Message
+						if err := json.Unmarshal([]byte(msgStr), &pm); err == nil {
+							s.HandleMessage(user, &pm)
+							isLive <- true
+						} else {
+							user.SendMsg("非法 JSON 协议: " + err.Error())
+						}
+					} else {
+						user.DoMessage(msgStr)
+						isLive <- true
+					}
 				}
 				break
 			}
@@ -170,6 +188,7 @@ func (s *Server) Start() {
 	defer listener.Close()
 
 	go s.ListenMessager()
+	go s.DeliverWorker()
 
 	for {
 		conn, err := listener.Accept()
@@ -179,4 +198,77 @@ func (s *Server) Start() {
 		}
 		go s.Handler(conn)
 	}
+}
+
+// HandleMessage dispatches incoming protocol messages from clients.
+func (s *Server) HandleMessage(user *User, m *Message) {
+	switch m.Type {
+	case TypeSend:
+		if m.From == "" {
+			m.From = user.Name
+		}
+		s.HandleClientSend(user, m)
+	case TypeDeliverAck:
+		s.HandleDeliverAck(user, m)
+	default:
+		// ignore other types for now
+	}
+}
+
+// HandleClientSend handles a client's send request: dedupe, persist in-memory and enqueue for delivery.
+func (s *Server) HandleClientSend(u *User, req *Message) {
+	// idempotency check by (from, client_msg_id)
+	if existing := s.store.GetMessageByClientID(req.From, req.ClientMsgID); existing != nil {
+		ack := &Message{Type: TypeSendAck, ClientMsgID: req.ClientMsgID, ServerMsgID: existing.ServerMsgID, Seq: existing.Seq}
+		u.SendJSON(ack)
+		return
+	}
+
+	seq, _ := s.store.NextSeq(req.ChatID)
+	serverMsgID := fmt.Sprintf("s-%d", time.Now().UnixNano())
+	msg := &Message{
+		Type:        TypeDeliver,
+		ServerMsgID: serverMsgID,
+		ClientMsgID: req.ClientMsgID,
+		ChatID:      req.ChatID,
+		From:        req.From,
+		To:          req.To,
+		Seq:         seq,
+		Body:        req.Body,
+		Ts:          time.Now().Unix(),
+	}
+	s.store.SaveMessage(msg)
+
+	// recipients: private or broadcast to all online except sender
+	if req.To != "" {
+		s.store.SaveDelivery(serverMsgID, req.To)
+	} else {
+		s.MapLock.RLock()
+		for _, user := range s.OnlineMap {
+			if user.Name == u.Name {
+				continue
+			}
+			s.store.SaveDelivery(serverMsgID, user.Name)
+		}
+		s.MapLock.RUnlock()
+	}
+
+	// reply send_ack
+	ack := &Message{Type: TypeSendAck, ClientMsgID: req.ClientMsgID, ServerMsgID: serverMsgID, Seq: seq}
+	u.SendJSON(ack)
+
+	// enqueue for delivery
+	select {
+	case s.DeliverQueue <- serverMsgID:
+	default:
+		// queue is full, drop (in this simple impl)
+	}
+}
+
+// HandleDeliverAck marks a delivery as acknowledged by recipient.
+func (s *Server) HandleDeliverAck(u *User, m *Message) {
+	if m.ServerMsgID == "" {
+		return
+	}
+	s.store.MarkDeliveryAcked(m.ServerMsgID, u.Name)
 }

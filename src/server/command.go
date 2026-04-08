@@ -1,7 +1,9 @@
 package server
 
 import (
+	"fmt"
 	"strings"
+	"time"
 )
 
 // 查询在线用户
@@ -60,15 +62,24 @@ func (u *User) useChat(msg string) {
 	toMsg := strings.TrimSpace(parts[2])
 
 	u.Server.MapLock.RLock()
-	toUser, ok := u.Server.OnlineMap[toName]
+	_, ok := u.Server.OnlineMap[toName]
 	u.Server.MapLock.RUnlock()
 	if !ok {
 		u.SendMsg("发送对象不存在，请检查用户名后重试。使用 who 查看在线用户。\n")
 		return
 	}
 
-	sendText := u.Name + " --> " + toMsg + "\n"
-	toUser.SendMsg(sendText)
+	// 构造 send 协议并通过服务器发送（会返回 send_ack）
+	clientID := fmt.Sprintf("c-%d", time.Now().UnixNano())
+	req := &Message{
+		Type:        TypeSend,
+		ClientMsgID: clientID,
+		ChatID:      "",
+		From:        u.Name,
+		To:          toName,
+		Body:        toMsg,
+	}
+	u.Server.HandleClientSend(u, req)
 }
 
 // 退出聊天室
