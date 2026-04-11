@@ -1,9 +1,11 @@
 ## 📌 模块概述
+
 **目标**: 基于《[一个海量在线用户即时通讯系统（IM）的完整设计Plus](https://mp.weixin.qq.com/s/TYUNPgf_3rkBr38rNlEZ2g)》实现 **用户认证与授权系统 (Authentication & Authorization)**，对应文章第1.2.2.1节的 **登录授权(Auth)** 流程和第1.2.2.3节的 **踢人(Kickout)** 机制。
 
 > 📖 **架构参考**: 文章第1.2.2节 - TCP接入核心流程中的 Auth/Logout/Kickout 完整流程。
 
 ## ✨ 实现效果
+
 - [ ] 用户可以通过用户名+密码注册账号
 - [ ] 登录成功后获得 JWT Token（包含 UserID、过期时间）
 - [ ] Token 验证中间件保护所有需要认证的接口
@@ -12,6 +14,7 @@
 - [ ] 密码使用 bcrypt 加密存储
 
 ## 🏗️ 架构定位（对应文章流程）
+
 ```
 客户端(H5) ──→ Gate(接入层) ──→ Logic(逻辑层) ──→ Storage(存储层)
    │              │                  │                │
@@ -27,12 +30,14 @@
 ## 📋 实现步骤
 
 ### Step 1: 安装依赖
+
 ```bash
 go get github.com/golang-jwt/jwt/v5
 go get golang.org/x/crypto/bcrypt
 ```
 
 ### Step 2: 实现 JWT 工具类
+
 新建文件: `auth/jwt.go`
 
 ```go
@@ -81,6 +86,7 @@ func ParseToken(tokenString string) (*Claims, error) {
 ```
 
 ### Step 3: 实现认证服务（对应文章Auth流程）
+
 新建文件: `auth/service.go`
 
 ```go
@@ -158,6 +164,7 @@ func (s *AuthService) Logout(ctx context.Context, userID string) error {
 ```
 
 ### Step 4: 实现认证中间件（供Gate/API层使用）
+
 新建文件: `auth/middleware.go`
 
 ```go
@@ -198,6 +205,7 @@ func JWTMiddleware() func(http.Handler) http.Handler {
 ```
 
 ### Step 5: 创建认证相关的HTTP接口（API层预埋）
+
 新建文件: `api/auth_handler.go`
 
 ```go
@@ -208,9 +216,11 @@ GET  /api/v1/auth/me        - 获取当前用户信息
 ```
 
 ### Step 6: 编写单元测试
+
 新建文件: `auth/service_test.go`
 
 测试用例:
+
 - 测试正常注册流程
 - 测试重复注册失败
 - 测试正常登录并返回Token
@@ -219,15 +229,17 @@ GET  /api/v1/auth/me        - 获取当前用户信息
 - 测试bcrypt加密和验证一致性
 
 ## 🎯 参考资源
+
 - **📄 架构参考文章**: [《一个海量在线用户即时通讯系统（IM）的完整设计Plus》](https://mp.weixin.qq.com/s/TYUNPgf_3rkBr38rNlEZ2g)
   - 第1.2.2.1节：登录授权(Auth)完整流程图
   - 第1.2.2.2节：登出(Logout)流程
   - 第1.2.2.3节：踢人(Kickout)机制（多设备登录检测）
-- **JWT文档**: https://github.com/golang-jwt/jwt
-- **bcrypt文档**: https://pkg.go.dev/golang.org/x/crypto/bcrypt
+- **JWT文档**: <https://github.com/golang-jwt/jwt>
+- **bcrypt文档**: <https://pkg.go.dev/golang.org/x/crypto/bcrypt>
 - **前置依赖**: Issue #1 (SQLite存储层必须先完成)
 
 ## 🔍 验收标准
+
 1. ✅ 可以通过 POST `/api/v1/auth/register` 成功注册新用户
 2. ✅ 注册时密码已使用 bcrypt 加密存储
 3. ✅ 可以通过 POST `/api/v1/auth/login` 成功登录并获得 JWT Token
@@ -238,12 +250,14 @@ GET  /api/v1/auth/me        - 获取当前用户信息
 8. ✅ 单元测试全部通过 (`go test ./auth/...`)
 
 ## ⚠️ 注意事项
+
 - ⚠️ **安全性**: JWT Secret 必须从环境变量或配置文件读取，不能硬编码
 - ⚠️ **性能**: bcrypt 的 DefaultCost=10，在注册时会较慢（约100ms），这是正常的
 - ⚠️ **扩展性**: 当前版本为简单版JWT，生产环境建议引入 Refresh Token 机制
 - ⚠️ **Kickout**: 多设备踢人功能依赖 Redis（将在Issue #7中完善）
 
 ## 📊 工作量评估
+
 - 预计耗时: 2天
 - 复杂度: ⭐⭐⭐ (涉及安全相关逻辑)
 - 依赖:
@@ -253,3 +267,16 @@ GET  /api/v1/auth/me        - 获取当前用户信息
 ---
 **所属阶段**: 第1周 - 用户认证系统（对应文章1.2.2.1-1.2.2.3节）
 **优先级**: P0 (必须完成 - 所有业务的基础)
+
+---
+
+## 设计审查与必要修改（自动追加）
+
+快速要点：
+
+- 登录/踢人流程依赖路由与在线状态，必须从 `Store`/`Redis` 读取或维护路由信息，避免直接使用进程内内存状态导致分布式场景问题。
+- Token 与 Session 设计应在 issue 文档里明确：Token 来源、过期/刷新策略、黑名单／登出处理。
+- 在实现 Kickout 时应保证消息推送的幂等性与可观察性（记录 kickout 事件以便追溯）。
+- 与消息持久化模块协作：登出/踢人事件可能影响未送达消息的重试与死信处理，需在数据库/队列层协同设计。
+
+详见：[ISSUE_DESIGN_REVIEW.md](ISSUE_DESIGN_REVIEW.md)

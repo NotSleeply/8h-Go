@@ -1,9 +1,11 @@
 ## 📌 模块概述
+
 **目标**: 基于《[一个海量在线用户即时通讯系统（IM）的完整设计Plus](https://mp.weixin.qq.com/s/TYUNPgf_3rkBr38rNlEZ2g)》实现 **单对单聊天功能 (Client-to-Client, C2C)**，对应文章第1.2.2.6节的 **C2C完整流程**。
 
 > 📖 **架构参考**: 文章第1.2.2.6节 - "1.App1向gate1发送信息 → 2.Gate1将信息投递给logic → 3.Logic收到信息后存储 → ... → 9.App2向gate2发送ack"。
 
 ## ✨ 实现效果
+
 - [ ] 用户A可以通过WebSocket发送消息给用户B
 - [ ] 消息经过 Gate → Logic → Storage 完整链路处理
 - [ ] 消息持久化到SQLite数据库（支持历史记录查询）
@@ -13,6 +15,7 @@
 - [ ] 接收者实时收到消息推送
 
 ## 🏗️ 架构定位（对应文章1.2.2.6节 C2C流程）
+
 ```
 App1(用户A) ──→ Gate1 ──→ Logic ──→ SQLite(存储)
    │              │         │
@@ -36,6 +39,7 @@ App1(用户A) ──→ Gate1 ──→ Logic ──→ SQLite(存储)
 ## 📋 实现步骤
 
 ### Step 1: 定义C2C消息服务接口
+
 新建文件: `logic/c2c_service.go`
 
 ```go
@@ -104,6 +108,7 @@ func (s *C2CService) GetC2CHistory(ctx context.Context, chatID string, limit, of
 ```
 
 ### Step 2: 实现消息ID生成器（全局唯一）
+
 新建文件: `logic/id_generator.go`
 
 ```go
@@ -152,6 +157,7 @@ func (g *MessageIDGenerator) Generate() (serverMsgID uint64, seq uint64) {
 ```
 
 ### Step 3: 在Logic层集成C2C服务
+
 新建文件: `logic/service.go`（扩展）
 
 ```go
@@ -212,9 +218,11 @@ func (l *LogicServer) HandleC2CMessage(ctx context.Context, req *HandleC2CReques
 ```
 
 ### Step 4: 编写单元测试
+
 新建文件: `logic/c2c_service_test.go`
 
 测试用例:
+
 - 测试正常发送消息并返回ServerMsgID
 - 测试相同ClientMsgID的幂等性（不重复插入）
 - 测试消息Seq单调递增
@@ -222,13 +230,15 @@ func (l *LogicServer) HandleC2CMessage(ctx context.Context, req *HandleC2CReques
 - 测试消息内容完整性（发送方和接收方看到的内容一致）
 
 ## 🎯 参考资源
+
 - **📄 架构参考文章**: [《一个海量在线用户即时通讯系统（IM）的完整设计Plus》](https://mp.weixin.qq.com/s/TYUNPgf_3rkBr38rNlEZ2g)
   - 第1.2.2.6节：单对单聊天(C2C)完整流程图（11个步骤）
   - 第4节：离线消息拉取方式（TimeLine模型）
-- **Snowflake算法**: https://github.com/bwmarrin/snowflake
+- **Snowflake算法**: <https://github.com/bwmarrin/snowflake>
 - **前置依赖**: Issue #1 (SQLite存储) + Issue #5 (Gate接入层)
 
 ## 🔍 验收标准
+
 1. ✅ 用户A发送消息后立即收到ServerMsgID和Seq（<100ms延迟）
 2. ✅ 用户B在3秒内收到消息推送（在线场景）
 3. ✅ 相同ClientMsgID不会产生重复消息（幂等性验证）
@@ -238,12 +248,14 @@ func (l *LogicServer) HandleC2CMessage(ctx context.Context, req *HandleC2CReques
 7. ✅ 单元测试全部通过 (`go test ./logic/...`)
 
 ## ⚠️ 注意事项
+
 - ⚠️ **性能**: 消息写入SQLite应使用批量插入或事务优化
 - ⚠️ **可靠性**: 应考虑消息投递失败的重试机制（后续Issue7用Kafka增强）
 - ⚠️ **顺序性**: 同一会话内的消息必须严格按Seq排序
 - ⚠️ **安全性**: 应检查发送者和接收者是否为好友关系（可选）
 
 ## 📊 工作量评估
+
 - 预计耗时: 2-3天
 - 复杂度: ⭐⭐⭐⭐ (核心业务逻辑)
 - 依赖:
@@ -254,3 +266,14 @@ func (l *LogicServer) HandleC2CMessage(ctx context.Context, req *HandleC2CReques
 ---
 **所属阶段**: 第2周 - 核心业务逻辑（对应文章1.2.2.6节）
 **优先级**: P0 (核心功能 - IM系统的基本能力)
+
+---
+
+## 设计审查与必要修改（自动追加）
+
+- 单聊持久化必须在事务内完成：写 `messages` 且写入 `message_recipient` 行，从而保证发送后可恢复投递。
+- Seq/ServerMsgID 发号实现应抽象为可替换的发号器（支持 Snowflake/Redis INCR），并在文档中说明单机与分布式两种场景。
+- 幂等性必须用 `(from, client_msg_id)` 或全局唯一 client_msg_id 实现，避免跨客户端冲突。
+- 明确失败处理：如果推送给接收者失败，应把记录标为 pending 并由 Task/Deliver 重试。
+
+详见：[ISSUE_DESIGN_REVIEW.md](ISSUE_DESIGN_REVIEW.md)

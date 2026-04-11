@@ -1,19 +1,28 @@
 ## 📌 模块概述
+
 **目标**: 引入 **Redis + Kafka 双引擎** 构建现代化的IM消息中间件层，对应文章存储层的缓存和消息队列需求。
 
 > 🚀 **现代化升级**: 除了文章提到的Redis缓存外，我们还引入 **Apache Kafka** 作为分布式消息队列，实现：
+>
 > - **削峰填谷**: 高并发场景下的流量控制
 > - **异步解耦**: Logic/Gate/Task层完全解耦
 > - **消息持久化**: 确保消息不丢失
 > - **离线消息队列**: 用户离线时消息暂存Kafka
 
-## ✨ 实现效果
-- [ ] **Redis集群**:
-  - [ ] 用户在线状态存储（Key: `user:online:{uid}`）
-  - [ ] 用户路由信息（Key: `user:route:{uid}` → Gate节点地址）
-  - [ ] 会话Session管理（替代内存存储）
-  - [ ] 消息序号生成器（INCR原子操作）
-  - [ ] 频率限制计数器（防刷机制）
+- [ ] 会话Session管理（替代内存存储）
+- [ ] 消息序号生成器（INCR原子操作）
+
+---
+
+## 设计审查与必要修改（自动追加）
+
+- Redis/Kafka 设计覆盖了性能与可靠性，但要在文档中明确：哪些信息写入 Redis（路由/状态/seq），哪些写入 Kafka（投递/离线），避免重复或丢失场景。
+- 消息序号（seq）在 Redis 中使用 INCR 时需考虑 shard/namespace（chat_id 维度的 key）并在文档说明并发写入限制。
+- Kafka 仅作传输缓冲并不能替代持久化数据库：消息写入 Kafka 后仍建议在 Storage 层建立持久化索引（或定期归档）。
+- 在 issue 文档中增加“测试与运维”段：如何在本地通过 docker-compose 验证消费、如何检测未消费/积压、如何设置告警阈值。
+
+详见：[ISSUE_DESIGN_REVIEW.md](ISSUE_DESIGN_REVIEW.md)
+
 - [ ] **Kafka集群**:
   - [ ] 消息投递Topic (`im-message-deliver`) - 异步推送消息
   - [ ] 离线消息Topic (`im-offline-message`) - 存储离线消息
@@ -21,6 +30,7 @@
   - [ ] 事件流Topic (`im-events`) - 用户上下线、群组变更等事件
 
 ## 🏗️ 架构定位
+
 ```
 ┌─────────────────────────────────────────────┐
 │              Gate 接入层                      │
@@ -51,6 +61,7 @@
 ## 📋 实现步骤
 
 ### Step 1: 安装依赖
+
 ```bash
 # Redis客户端
 go get github.com/redis/go-redis/v9
@@ -60,6 +71,7 @@ go get github.com/IBM/sarama
 ```
 
 ### Step 2: 实现 Redis 服务封装
+
 新建文件: `cache/redis.go`
 
 ```go
@@ -133,6 +145,7 @@ func (s *UserService) RateLimitCheck(ctx context.Context, key string, limit int6
 ```
 
 ### Step 3: 实现 Kafka 生产者和消费者
+
 新建文件: `messaging/kafka_producer.go`
 
 ```go
@@ -285,6 +298,7 @@ func (c *KafkaConsumer) ConsumeClaim(session sarama.ConsumerGroupSession, claim 
 ```
 
 ### Step 4: 定义消息结构体
+
 新建文件: `messaging/types.go`
 
 ```go
@@ -319,6 +333,7 @@ type MessageAck struct {
 ```
 
 ### Step 5: 在 main.go 中初始化
+
 ```go
 func main() {
     // 初始化Redis
@@ -340,6 +355,7 @@ func main() {
 ```
 
 ### Step 6: 编写单元测试 + Docker Compose配置
+
 新建文件: `docker/kafka-redis.yml`（用于本地开发）
 
 ```yaml
@@ -375,14 +391,16 @@ volumes:
 ```
 
 ## 🎯 参考资源
+
 - **📄 架构参考文章**: [《一个海量在线用户即时通讯系统（IM）的完整设计Plus》](https://mp.weixin.qq.com/s/TYUNPgf_3rkBr38rNlEZ2g)
   - 第1.1.5节：存储层（缓存+消息数据）
   - 第4节：TimeLine模型和离线消息拉取
-- **Redis文档**: https://redis.io/docs/
-- **Kafka文档**: https://kafka.apache.org/documentation/
-- **Sarama库**: https://github.com/IBM/sarama
+- **Redis文档**: <https://redis.io/docs/>
+- **Kafka文档**: <https://kafka.apache.org/documentation/>
+- **Sarama库**: <https://github.com/IBM/sarama>
 
 ## 🔍 验收标准
+
 1. ✅ 可以成功连接Redis并执行SET/GET操作
 2. ✅ 用户上线后可以在Redis中查询到路由信息
 3. ✅ 可以通过Kafka成功发送和消费消息
@@ -391,12 +409,14 @@ volumes:
 6. ✅ 单元测试全部通过 (`go test ./cache/... ./messaging/...`)
 
 ## ⚠️ 注意事项
+
 - ⚠️ **可靠性**: Kafka应配置 `RequiredAcks=All` 确保消息不丢失
 - ⚠️ **性能**: Redis连接池大小应根据并发量调整
 - ⚠️ **监控**: 应接入Prometheus监控Redis/Kafka指标
 - ⚠️ **容灾**: 生产环境建议部署3节点Kafka集群 + Redis Sentinel
 
 ## 📊 工作量评估
+
 - 预计耗时: 4-5天
 - 复杂度: ⭐⭐⭐⭐⭐ (核心基础设施 - 影响全系统性能)
 - 依赖: 无强依赖（但建议在Issue #6之后做）

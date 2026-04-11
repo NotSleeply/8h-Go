@@ -1,7 +1,9 @@
 ## 📌 模块概述
+
 **目标**: 引入 **gRPC框架** 实现各微服务之间的高性能RPC通讯，替代本地函数调用，为真正的分布式架构奠定基础。
 
 > 🔧 **技术选型**: 使用 **gRPC + Protobuf** 替代 rpcx，原因：
+>
 > - **标准化**: Protobuf是业界标准的IDL（接口定义语言）
 > - **高性能**: 基于HTTP/2，支持双向流和头部压缩
 > - **多语言原生支持**: Go/Java/Python/Node.js等
@@ -9,6 +11,7 @@
 > - **Google背书**: 云原生CNCF毕业项目
 
 ## ✨ 实现效果
+
 - [ ] 定义清晰的 `.proto` 接口文件（IDL）
 - [ ] Logic层提供gRPC Server供Gate/API层调用
 - [ ] Gate层通过gRPC Client调用Logic层
@@ -16,6 +19,7 @@
 - [ ] 集成服务发现（etcd或Consul）
 
 ## 🏗️ 架构定位
+
 ```
 ┌──────────────┐         ┌──────────────┐
 │   Gate 层     │  gRPC   │   Logic 层    │
@@ -37,6 +41,7 @@ Protobuf IDL 定义 (.proto 文件):
 ## 📋 实现步骤
 
 ### Step 1: 安装依赖
+
 ```bash
 # 安装protoc编译器（如果未安装）
 # Windows: choco install protoc
@@ -51,6 +56,7 @@ go get google.golang.org/protobuf
 ```
 
 ### Step 2: 定义Protobuf接口文件
+
 新建文件: `proto/im.proto`
 
 ```protobuf
@@ -178,16 +184,19 @@ message Notification {
 ```
 
 ### Step 3: 生成Go代码
+
 ```bash
 # 在项目根目录执行
 protoc --go_out=. --go-grpc_out=. proto/im.proto
 ```
 
 生成的文件:
+
 - `pb/im.pb.go` - 消息类型的Go结构体
 - `pb/im_grpc.pb.go` - gRPC服务端和客户端接口
 
 ### Step 4: 实现gRPC Server（Logic层）
+
 新建文件: `logic/grpc_server.go`
 
 ```go
@@ -275,6 +284,7 @@ func StartGRPCServer(addr string, server *LogicGRPCServer) error {
 ```
 
 ### Step 5: 实现gRPC Client（Gate层）
+
 新建文件: `gate/grpc_client.go`
 
 ```go
@@ -321,19 +331,23 @@ func (c *LogicGRPCClient) SendMessage(ctx context.Context, req *SendMessageReque
 ```
 
 ### Step 6: 编写单元测试
+
 测试用例:
+
 - 测试gRPC连接建立
 - 测试SendMessage RPC调用成功
 - 测试Authenticate Token验证
 - 测试超时和错误处理
 
 ## 🎯 参考资源
-- **gRPC官方文档**: https://grpc.io/docs/
-- **Protobuf文档**: https://developers.google.com/protocol-buffers
-- **Go gRPC示例**: https://grpc.io/docs/languages/go/quickstart/
+
+- **gRPC官方文档**: <https://grpc.io/docs/>
+- **Protobuf文档**: <https://developers.google.com/protocol-buffers>
+- **Go gRPC示例**: <https://grpc.io/docs/languages/go/quickstart/>
 - **前置依赖**: Issue #9 (Logic层完整实现)
 
 ## 🔍 验收标准
+
 1. ✅ 可以通过 `protoc` 成功生成Go代码
 2. ✅ Logic层gRPC Server启动监听 :50051
 3. ✅ Gate层可以通过gRPC成功调用Logic层的SendMessage方法
@@ -342,12 +356,14 @@ func (c *LogicGRPCClient) SendMessage(ctx context.Context, req *SendMessageReque
 6. ✅ 单元测试全部通过 (`go test ./...`)
 
 ## ⚠️ 注意事项
+
 - ⚠️ **版本兼容性**: protoc编译器和protoc-gen-go版本必须匹配
 - ⚠️ **安全性**: 生产环境应启用TLS加密（grpc.WithTransportCredentials）
 - ⚠️ **负载均衡**: 可结合gRPC的负载均衡策略
 - ⚠️ **监控**: 应集成Prometheus监控gRPC指标（延迟/QPS/错误率）
 
 ## 📊 工作量评估
+
 - 预计耗时: 3-4天
 - 复杂度: ⭐⭐⭐⭐ (涉及协议设计和网络编程)
 - 依赖:
@@ -357,3 +373,13 @@ func (c *LogicGRPCClient) SendMessage(ctx context.Context, req *SendMessageReque
 ---
 **所属阶段**: 第4周 - 分布式通讯架构
 **优先级**: P0 (核心架构升级 - 微服务化的基础)
+
+---
+
+## 设计审查与必要修改（自动追加）
+
+- gRPC/Protobuf 接口应明确错误码和超时/重试语义，避免不同语言实现间契约不一致。
+- 在 proto 中对消息流/流控做出限制（最大消息大小、心跳/流空闲超时），以保护远端服务。
+- 建议在文档中加入服务发现与 TLS 说明（生产环境应启用 TLS 并考虑认证策略）。
+
+详见：[ISSUE_DESIGN_REVIEW.md](ISSUE_DESIGN_REVIEW.md)

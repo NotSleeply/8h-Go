@@ -1,9 +1,11 @@
 ## 📌 模块概述
+
 **目标**: 基于《[一个海量在线用户即时通讯系统（IM）的完整设计Plus](https://mp.weixin.qq.com/s/TYUNPgf_3rkBr38rNlEZ2g)》构建 **Gate 接入层 (Gateway/Access Layer)**，对应文章第1.1.3节的 **接入层** 设计。
 
 > 📖 **架构参考**: 文章第1.1.3节 - "接入层主要任务是保持海量用户连接（接入）、攻击防护、将海量连接整流成少量TCP连接与逻辑层通讯"。
 
 ## ✨ 实现效果
+
 - [ ] 统一管理所有WebSocket客户端连接（基于Issue4的Hub）
 - [ ] 实现**消息路由转发**：将客户端消息转发给Logic层处理
 - [ ] 实现**消息投递**：将Logic层的响应推送给目标客户端
@@ -12,6 +14,7 @@
 - [ ] 提供**统计接口**：在线用户数、消息吞吐量等监控数据
 
 ## 🏗️ 架构定位（对应文章1.1.3节）
+
 ```
 ┌─────────────────────────────────────┐
 │        用户端 (Web Browser)          │  ← H5页面 (文章1.1.2节)
@@ -34,29 +37,19 @@
 ## 📋 实现步骤
 
 ### Step 1: 创建 Gate 核心结构
+
 新建文件: `gate/gate.go`
 
 ```go
-package gate
-
-import (
     "context"
     "log"
     "sync"
-    "time"
-)
-
-// Gate 接入层核心（对应文章msg-gate角色）
 type Gate struct {
     hub           *Hub                    // 连接管理中心（来自Issue4）
-    userSessions  map[string]*UserSession  // 用户会话表（UID -> Session）
-    sessionMu     sync.RWMutex
-    msgHandler    LogicClient              // Logic层客户端接口（后续用gRPC实现）
     metrics       *Metrics                 // 统计指标
 }
 
 // UserSession 用户会话信息
-type UserSession struct {
     UserID      string
     Client      *Client       // WebSocket连接
     LoginTime   time.Time
@@ -85,6 +78,7 @@ func NewGate(hub *Hub, logicClient LogicClient) *Gate {
 ```
 
 ### Step 2: 实现用户会话管理
+
 在 `gate/gate.go` 中添加：
 
 ```go
@@ -165,6 +159,7 @@ func (g *Gate) GetUserSession(userID string) (*UserSession, bool) {
 ```
 
 ### Step 3: 实现消息路由器（Message Router）
+
 新建文件: `gate/router.go`
 
 ```go
@@ -286,6 +281,7 @@ func (h *DefaultMessageHandler) handleC2CMessage(client *Client, msg *protocol.M
 ```
 
 ### Step 4: 实现安全过滤器（基础攻击防护）
+
 新建文件: `gate/security.go`
 
 ```go
@@ -346,6 +342,7 @@ func (sf *SecurityFilter) IsBlacklisted(ip string) bool {
 ```
 
 ### Step 5: 集成到 main.go
+
 ```go
 func main() {
     // ... 初始化Storage、Auth等
@@ -371,10 +368,12 @@ func main() {
 ```
 
 ### Step 6: 编写单元测试
+
 新建文件: `gate/gate_test.go`
 新建文件: `gate/security_test.go`
 
 测试用例:
+
 - 测试用户登录和会话创建
 - 测试踢人机制（同账号第二次登录）
 - 测试用户登出和会话清理
@@ -383,6 +382,7 @@ func main() {
 - 测试IP黑名单拦截
 
 ## 🎯 参考资源
+
 - **📄 架构参考文章**: [《一个海量在线用户即时通讯系统（IM）的完整设计Plus》](https://mp.weixin.qq.com/s/TYUNPgf_3rkBr38rNlEZ2g)
   - 第1.1.3节：接入层三大职责（连接管理、攻击防护、整流）
   - 第1.2.2.1节：Auth流程（Gate接收验证请求并返回结果）
@@ -390,6 +390,7 @@ func main() {
 - **前置依赖**: Issue #4 (WebSocket协议) - 必须先完成Hub和Client
 
 ## 🔍 验收标准
+
 1. ✅ 用户通过WS登录后，Gate正确创建UserSession并维护映射
 2. ✅ 同一账号第二次登录时，旧设备收到踢人消息并被断开
 3. ✅ 用户登出后，Session被清理且通知Logic层
@@ -400,12 +401,14 @@ func main() {
 8. ✅ 单元测试全部通过 (`go test ./gate/...`)
 
 ## ⚠️ 注意事项
+
 - ⚠️ **并发安全**: 所有对userSessions的操作必须加锁
 - ⚠️ **性能优化**: 高并发场景下，userSessions可考虑分片或使用sync.Map
 - ⚠️ **扩展性**: 当前版本使用内存存储Session，生产环境建议持久化到Redis
 - ⚠️ **安全性**: 应添加更完善的防护（如WAF、DDoS防护等）
 
 ## 📊 工作量评估
+
 - 预计耗时: 3-4天
 - 复杂度: ⭐⭐⭐⭐ (核心组件，涉及并发和安全)
 - 依赖:

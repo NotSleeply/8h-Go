@@ -1,9 +1,11 @@
 ## 📌 模块概述
+
 **目标**: 基于《[一个海量在线用户即时通讯系统（IM）的完整设计Plus](https://mp.weixin.qq.com/s/TYUNPgf_3rkBr38rNlEZ2g)》实现 **WebSocket 协议支持**，对应文章第1.1.2节的 **用户端API（H5页面提供WebSocket接口）**。
 
 > 📖 **架构参考**: 文章第1.1.2节 - "对于H5页面，提供WebSocket接口"。我们专注于Web端实现，不需要iOS/Android SDK。
 
 ## ✨ 实现效果
+
 - [ ] 服务端同时监听 WebSocket 端口（默认 :9000）
 - [ ] 支持 WebSocket 握手和连接管理
 - [ ] 实现 WebSocket 消息编解码（JSON格式）
@@ -12,6 +14,7 @@
 - [ ] 与现有TCP协议共存（双协议接入）
 
 ## 🏗️ 架构定位
+
 ```
 ┌──────────────────────────────────────┐
 │         用户端 (Web Browser)          │
@@ -35,11 +38,13 @@
 ## 📋 实现步骤
 
 ### Step 1: 安装依赖
+
 ```bash
 go get github.com/gorilla/websocket
 ```
 
 ### Step 2: 创建 WebSocket Server
+
 新建文件: `gate/ws_server.go`
 
 ```go
@@ -97,6 +102,7 @@ func (ws *WSServer) Start() error {
 ```
 
 ### Step 3: 实现连接管理器（Hub模式）
+
 新建文件: `gate/hub.go`
 
 ```go
@@ -186,6 +192,7 @@ func (h *Hub) GetClientByUserID(userID string) *Client {
 ```
 
 ### Step 4: 实现 Client 结构体
+
 新建文件: `gate/client.go`
 
 ```go
@@ -270,6 +277,7 @@ func (c *Client) writePump() {
 ```
 
 ### Step 5: 实现消息协议定义
+
 新建文件: `protocol/message.go`
 
 ```go
@@ -306,6 +314,7 @@ type Response struct {
 ```
 
 ### Step 6: 集成到 main.go
+
 ```go
 func main() {
     // ... 初始化Storage、Auth等
@@ -324,24 +333,28 @@ func main() {
 ```
 
 ### Step 7: 编写单元测试
+
 新建文件: `gate/hub_test.go`
 新建文件: `gate/client_test.go`
 
 测试用例:
+
 - 测试客户端注册和注销
 - 测试消息广播功能
 - 测试在线用户查询
 - 测试心跳超时断开
 
 ## 🎯 参考资源
+
 - **📄 架构参考文章**: [《一个海量在线用户即时通讯系统（IM）的完整设计Plus》](https://mp.weixin.qq.com/s/TYUNPgf_3rkBr38rNlEZ2g)
   - 第1.1.2节：用户端API（H5页面提供WebSocket接口）
   - 第1.2节：TCP接入核心流程（我们用WS替代TCP作为主要协议）
-- **Gorilla WebSocket文档**: https://pkg.go.dev/github.com/gorilla/websocket
-- **Chat Hub示例**: https://github.com/gorilla/websocket/tree/master/examples/chat
+- **Gorilla WebSocket文档**: <https://pkg.go.dev/github.com/gorilla/websocket>
+- **Chat Hub示例**: <https://github.com/gorilla/websocket/tree/master/examples/chat>
 - **前置依赖**: Issue #2 (认证系统) - 用于验证Token
 
 ## 🔍 验收标准
+
 1. ✅ 可以通过 `ws://localhost:9000/ws` 成功建立WebSocket连接
 2. ✅ 发送登录消息（MsgType=1）后成功认证并获取用户信息
 3. ✅ 心跳机制正常工作（30秒Ping/Pong）
@@ -351,12 +364,14 @@ func main() {
 7. ✅ 单元测试全部通过 (`go test ./gate/...`)
 
 ## ⚠️ 注意事项
+
 - ⚠️ **安全性**: 生产环境必须配置 CORS 白名单（CheckOrigin）
 - ⚠️ **性能**: Hub的读写锁可能成为瓶颈，后续可考虑分片优化
 - ⚠️ **兼容性**: 当前版本仅支持JSON格式，可扩展支持Protobuf二进制协议
 - ⚠️ **限流**: 应添加连接数限制和IP频率限制（防DDoS）
 
 ## 📊 工作量评估
+
 - 预计耗时: 2-3天
 - 复杂度: ⭐⭐⭐ (核心通信组件)
 - 依赖:
@@ -366,3 +381,13 @@ func main() {
 ---
 **所属阶段**: 第2周 - 接入层协议（对应文章1.1.2节）
 **优先级**: P0 (核心功能 - Web端唯一入口)
+
+---
+
+## 设计审查与必要修改（自动追加）
+
+- WebSocket 与 TCP 共存时，必须有统一的协议约定（frame/消息类型/ack），避免不同接入实现导致逻辑不一致。
+- 心跳/认证流程必须在握手阶段完成，避免未认证连接占用资源。
+- 建议支持 length-prefix 或 protobuf 二进制帧以适配更复杂的消息类型与粘包情形。
+
+详见：[ISSUE_DESIGN_REVIEW.md](ISSUE_DESIGN_REVIEW.md)

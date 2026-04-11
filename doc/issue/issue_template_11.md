@@ -1,9 +1,11 @@
 ## 📌 模块概述
+
 **目标**: 基于《[一个海量在线用户即时通讯系统（IM）的完整设计Plus](https://mp.weixin.qq.com/s/TYUNPgf_3rkBr38rNlEZ2g)》实现 **群聊功能 (Client-to-Group, C2G)**，对应文章第1.1.4节提到的 **"群聊(c2g)"** 功能。
 
 > 📖 **架构参考**: 文章第1.1.4节 - 逻辑层核心功能包括 "单聊(c2c)、... 群聊(c2g) ..."。
 
 ## ✨ 实现效果
+
 - [ ] 支持创建群组（设置群名、群主）
 - [ ] 用户可以加入/退出群组
 - [ ] 群消息广播给所有在线成员
@@ -12,6 +14,7 @@
 - [ ] 离线用户上线后可拉取群消息历史
 
 ## 🏗️ 架构定位
+
 ```
 发送者 ──→ Gate ──→ Logic(C2G Service) ──→ SQLite(群消息)
                       │
@@ -28,9 +31,11 @@
 ## 📋 实现步骤
 
 ### Step 1: 定义群组相关数据模型
+
 在 `storage/model.go` 中添加（已在Issue1定义Room和GroupMember表）
 
 ### Step 2: 实现C2G服务
+
 新建文件: `logic/c2g_service.go`
 
 ```go
@@ -72,8 +77,19 @@ func (s *C2GService) GetGroupHistory(ctx context.Context, roomID string, limit, 
 ```
 
 ### Step 3: 在Logic层集成C2G服务
+
 扩展 `logic/service.go`，添加HandleC2GMessage方法
 
 ---
 **所属阶段**: 第3周 - 群聊功能模块
 **优先级**: P0 (核心功能)
+
+---
+
+## 设计审查与必要修改（自动追加）
+
+- 群聊写放大效应较明显，建议采用“扩散写 + 批量插入”策略：把用户视图（每个成员的接收记录）批量写入 DB 或写入 Kafka 消费端以降低单次延迟。
+- 群消息投递需记录每个成员的 delivery 状态（`message_recipient`），以支持后续补偿与离线拉取。
+- 对于超大群或高并发群聊，要在设计中说明分片/batching 策略与速率限制。
+
+详见：[ISSUE_DESIGN_REVIEW.md](ISSUE_DESIGN_REVIEW.md)
