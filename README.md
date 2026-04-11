@@ -2,7 +2,7 @@
 
 本项目是一个简单的基于 TCP 的聊天室服务端示例，来自「[8小时转go](https://www.bilibili.com/video/BV1gf4y1r79E)」学习实践。项目实现了用户上线/下线、广播消息、私聊和改名功能，适合用来学习 Go 并发、网络编程和通道设计。
 
-[学习笔记](https://juejin.cn/post/7617013574440501289)
+
 
 ## 功能
 
@@ -27,4 +27,7 @@ nc 127.0.0.1 8888
 
 
 ## 致敬
-[LockGit/gochat](https://github.com/LockGit/gochat)
+- [学习笔记](https://juejin.cn/post/7617013574440501289)
+- [LockGit/gochat](https://github.com/LockGit/gochat)
+- [8小时转go](https://www.bilibili.com/video/BV1gf4y1r79E)
+- [一个海量在线用户即时通讯系统（IM）的完整设计Plus](https://mp.weixin.qq.com/s/TYUNPgf_3rkBr38rNlEZ2g)
