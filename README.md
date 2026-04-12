@@ -15,6 +15,25 @@
 go run main.go
 ```
 
+## Docker 一键启动
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+```
+
+或使用脚本：
+
+```bash
+sh scripts/start.sh
+```
+
+停止：
+
+```bash
+sh scripts/stop.sh
+```
+
 ## 测试连接
 
 在另一个终端使用 `nc` 连接：

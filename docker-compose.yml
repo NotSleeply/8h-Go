@@ -1,0 +1,78 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: goim-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  zookeeper:
+    image: bitnami/zookeeper:3.9
+    container_name: goim-zookeeper
+    restart: unless-stopped
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    ports:
+      - "${ZOOKEEPER_PORT:-2181}:2181"
+    volumes:
+      - zookeeper_data:/bitnami
+
+  kafka:
+    image: bitnami/kafka:3.7
+    container_name: goim-kafka
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+    environment:
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    volumes:
+      - kafka_data:/bitnami
+
+  app:
+    image: golang:1.25
+    container_name: goim-app
+    restart: unless-stopped
+    working_dir: /app
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    ports:
+      - "${APP_PORT:-8888}:8888"
+      - "${GRPC_PORT:-50051}:50051"
+    env_file:
+      - .env
+    environment:
+      - IM_DB_DSN=/data/gochat.sqlite3
+      - IM_REDIS_ADDR=redis:6379
+      - IM_KAFKA_BROKERS=kafka:9092
+    volumes:
+      - ./:/app
+      - sqlite_data:/data
+    command: >
+      sh -c "
+      go mod download &&
+      go run main.go
+      "
+
+volumes:
+  redis_data:
+  zookeeper_data:
+  kafka_data:
+  sqlite_data:
