@@ -27,6 +27,7 @@ type Server struct {
 	DeliverQueue chan string
 	store        *InMemoryStore
 	bus          *MessageBus
+	logic        *LogicService
 
 	// connection security
 	BlacklistIPs map[string]struct{}
@@ -78,12 +79,13 @@ func NewServer(ip string, port int) *Server {
 		}
 	}
 
+	store := NewInMemoryStore()
 	server := &Server{
 		Ip:              ip,
 		Port:            port,
 		OnlineMap:       make(map[string]*User),
 		DeliverQueue:    make(chan string, 1024),
-		store:           NewInMemoryStore(),
+		store:           store,
 		bus:             NewMessageBusFromEnv(),
 		BlacklistIPs:    blacklist,
 		rateWindow:      rateWindow,
@@ -93,6 +95,7 @@ func NewServer(ip string, port int) *Server {
 		maxDeliverRetry: maxDeliverRetry,
 		retryBaseDelay:  retryBaseDelay,
 	}
+	server.logic = NewLogicService(store)
 	return server
 }
 
@@ -343,35 +346,6 @@ func (s *Server) HandleClientSend(u *User, req *Message) {
 		req.ClientMsgID = fmt.Sprintf("c-%d", time.Now().UnixNano())
 	}
 
-	// idempotency check by (from, client_msg_id)
-	if existing := s.store.GetMessageByClientID(req.From, req.ClientMsgID); existing != nil {
-		ack := &Message{Type: TypeSendAck, ClientMsgID: req.ClientMsgID, ServerMsgID: existing.ServerMsgID, Seq: existing.Seq}
-		u.SendJSON(ack)
-		return
-	}
-
-	chatID := strings.TrimSpace(req.ChatID)
-	if chatID == "" && req.To != "" {
-		chatID = c2cChatID(req.From, req.To)
-	}
-	if chatID == "" {
-		chatID = "broadcast"
-	}
-
-	seq, _ := s.store.NextSeq(chatID)
-	serverMsgID := fmt.Sprintf("s-%d", time.Now().UnixNano())
-	msg := &Message{
-		Type:        TypeDeliver,
-		ServerMsgID: serverMsgID,
-		ClientMsgID: req.ClientMsgID,
-		ChatID:      chatID,
-		From:        req.From,
-		To:          req.To,
-		Seq:         seq,
-		Body:        req.Body,
-		Ts:          time.Now().Unix(),
-	}
-
 	var recipients []string
 	// recipients: private or broadcast to all online except sender
 	if req.To != "" {
@@ -386,17 +360,24 @@ func (s *Server) HandleClientSend(u *User, req *Message) {
 		}
 		s.MapLock.RUnlock()
 	}
-	if err := s.store.SaveMessageWithRecipients(msg, recipients); err != nil {
+
+	msg, existing, err := s.logic.ProcessSend(req, recipients)
+	if err != nil {
 		u.SendMsg("消息存储失败，请稍后重试。")
+		return
+	}
+	if existing != nil {
+		ack := &Message{Type: TypeSendAck, ClientMsgID: req.ClientMsgID, ServerMsgID: existing.ServerMsgID, Seq: existing.Seq}
+		u.SendJSON(ack)
 		return
 	}
 
 	// reply send_ack
-	ack := &Message{Type: TypeSendAck, ClientMsgID: req.ClientMsgID, ServerMsgID: serverMsgID, Seq: seq}
+	ack := &Message{Type: TypeSendAck, ClientMsgID: req.ClientMsgID, ServerMsgID: msg.ServerMsgID, Seq: msg.Seq}
 	u.SendJSON(ack)
 
 	// enqueue for delivery
-	s.EnqueueServerMsg(serverMsgID)
+	s.EnqueueServerMsg(msg.ServerMsgID)
 }
 
 func (s *Server) EnqueueServerMsg(serverMsgID string) {
@@ -426,14 +407,14 @@ func (s *Server) HandleDeliverAck(u *User, m *Message) {
 	if m.ServerMsgID == "" {
 		return
 	}
-	s.store.MarkDeliveryAcked(m.ServerMsgID, u.Name)
+	s.logic.HandleDeliverAck(u.Name, m.ServerMsgID)
 }
 
 func (s *Server) HandleReadAck(u *User, m *Message) {
 	if m.ServerMsgID == "" {
 		return
 	}
-	s.store.MarkDeliveryRead(m.ServerMsgID, u.Name)
+	s.logic.HandleReadAck(u.Name, m.ServerMsgID)
 }
 
 func (s *Server) EnqueuePendingForUser(username string, limit int) {
@@ -469,7 +450,7 @@ func (s *Server) GetC2CHistory(userA, userB string, limit int) []*Message {
 func (s *Server) BroadcastSystemEvent(body string, exclude string) (serverMsgID string, seq uint64) {
 	// 分配 seq（对 system 用一个独立 chat id，比如 "system"）
 	seq, _ = s.store.NextSeq("system")
-	serverMsgID = fmt.Sprintf("sys-%d", time.Now().UnixNano())
+	serverMsgID = s.logic.GenerateServerMsgID("sys")
 
 	msg := &Message{
 		Type:        TypeDeliver,
