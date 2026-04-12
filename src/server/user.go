@@ -166,6 +166,24 @@ func (u *User) DoMessage(msg string) {
 		u.useRead(msg)
 	} else if strings.HasPrefix(msg, "history|") {
 		u.useHistory(msg)
+	} else if strings.HasPrefix(msg, "gc|") {
+		u.useGroupCreate(msg)
+	} else if strings.HasPrefix(msg, "gj|") {
+		u.useGroupJoin(msg)
+	} else if strings.HasPrefix(msg, "gl|") {
+		u.useGroupLeave(msg)
+	} else if strings.HasPrefix(msg, "gd|") {
+		u.useGroupDelete(msg)
+	} else if strings.HasPrefix(msg, "gk|") {
+		u.useGroupKick(msg)
+	} else if strings.HasPrefix(msg, "ga|") {
+		u.useGroupGrantAdmin(msg)
+	} else if strings.HasPrefix(msg, "gr|") {
+		u.useGroupRevokeAdmin(msg)
+	} else if strings.HasPrefix(msg, "gm|") {
+		u.useGroupMembers(msg)
+	} else if strings.HasPrefix(msg, "gt|") {
+		u.useGroupTalk(msg)
 	} else if strings.HasPrefix(msg, "rename|") { // rename|msg
 		u.useRename(msg)
 	} else if strings.HasPrefix(msg, "to|") { // to|toName|msg

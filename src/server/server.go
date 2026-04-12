@@ -28,6 +28,7 @@ type Server struct {
 	store        *InMemoryStore
 	bus          *MessageBus
 	logic        *LogicService
+	groupManager *GroupManager
 
 	// connection security
 	BlacklistIPs map[string]struct{}
@@ -96,6 +97,7 @@ func NewServer(ip string, port int) *Server {
 		retryBaseDelay:  retryBaseDelay,
 	}
 	server.logic = NewLogicService(store)
+	server.groupManager = NewGroupManager()
 	return server
 }
 
