@@ -20,6 +20,7 @@ func CreateUser(user *storage.User) error {
 	return storage.DB.Create(user).Error
 }
 
+
 // GetUserByID 根据数字 ID 查询用户
 func GetUserByID(id uint) (*storage.User, error) {
 	if storage.DB == nil {
