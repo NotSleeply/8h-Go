@@ -502,6 +502,10 @@ func (s *Server) NextSeq(chatID string) uint64 {
 	return seq
 }
 
+func (s *Server) Logic() *LogicService {
+	return s.logic
+}
+
 // 启动
 func (s *Server) Start() {
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", s.Ip, s.Port))

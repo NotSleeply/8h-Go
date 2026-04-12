@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package im.v1;
+
+option go_package = "tet/src/rpc/pb;pb";
+
+service LogicService {
+  rpc SendMessage(SendMessageReq) returns (SendMessageResp);
+  rpc AckDelivery(AckDeliveryReq) returns (AckDeliveryResp);
+  rpc AckRead(AckReadReq) returns (AckReadResp);
+}
+
+message SendMessageReq {
+  string from = 1;
+  string to = 2;
+  string chat_id = 3;
+  string client_msg_id = 4;
+  string body = 5;
+}
+
+message SendMessageResp {
+  string server_msg_id = 1;
+  uint64 seq = 2;
+  bool deduped = 3;
+}
+
+message AckDeliveryReq {
+  string to = 1;
+  string server_msg_id = 2;
+}
+
+message AckDeliveryResp {
+  bool ok = 1;
+}
+
+message AckReadReq {
+  string to = 1;
+  string server_msg_id = 2;
+}
+
+message AckReadResp {
+  bool ok = 1;
+}
