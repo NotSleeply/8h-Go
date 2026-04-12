@@ -13,6 +13,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	group "tet/src/group"
+	iface "tet/src/iface"
+	logicpkg "tet/src/logic"
+	mqpkg "tet/src/mq"
+	storepkg "tet/src/store"
 )
 
 type Server struct {
@@ -25,10 +31,10 @@ type Server struct {
 
 	// Structured delivery queue and in-memory store for ACKs
 	DeliverQueue chan string
-	store        *InMemoryStore
-	bus          *MessageBus
-	logic        *LogicService
-	groupManager *GroupManager
+	store        iface.Store
+	bus          iface.MessageBusIface
+	logic        *logicpkg.LogicService
+	groupManager *group.GroupManager
 
 	// connection security
 	BlacklistIPs map[string]struct{}
@@ -80,14 +86,14 @@ func NewServer(ip string, port int) *Server {
 		}
 	}
 
-	store := NewInMemoryStore()
+	store := storepkg.NewInMemoryStore()
 	server := &Server{
 		Ip:              ip,
 		Port:            port,
 		OnlineMap:       make(map[string]*User),
 		DeliverQueue:    make(chan string, 1024),
 		store:           store,
-		bus:             NewMessageBusFromEnv(),
+		bus:             mqpkg.NewMessageBusFromEnv(),
 		BlacklistIPs:    blacklist,
 		rateWindow:      rateWindow,
 		rateLimit:       rateLimit,
@@ -96,8 +102,8 @@ func NewServer(ip string, port int) *Server {
 		maxDeliverRetry: maxDeliverRetry,
 		retryBaseDelay:  retryBaseDelay,
 	}
-	server.logic = NewLogicService(store)
-	server.groupManager = NewGroupManager()
+	server.logic = logicpkg.NewLogicService(store)
+	server.groupManager = group.NewGroupManager()
 	return server
 }
 
@@ -195,9 +201,9 @@ func (s *Server) SnapshotStats() StatsSnapshot {
 	s.MapLock.RLock()
 	online := len(s.OnlineMap)
 	s.MapLock.RUnlock()
-	mqMode := string(MQModeLocal)
+	mqMode := "local"
 	if s.bus != nil {
-		mqMode = string(s.bus.mode)
+		mqMode = s.bus.Mode()
 	}
 	deliveryStats := s.store.DeliveryStats()
 
@@ -502,7 +508,7 @@ func (s *Server) NextSeq(chatID string) uint64 {
 	return seq
 }
 
-func (s *Server) Logic() *LogicService {
+func (s *Server) Logic() *logicpkg.LogicService {
 	return s.logic
 }
 

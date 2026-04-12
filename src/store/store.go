@@ -1,4 +1,4 @@
-package server
+package store
 
 import (
 	"errors"
@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	iface "tet/src/iface"
+	"tet/src/protocol"
 	"tet/src/storage"
 
 	"gorm.io/gorm"
@@ -28,10 +30,10 @@ type DeliveryEntry struct {
 // - optional persistence in SQLite when storage.DB is initialized
 type InMemoryStore struct {
 	mu         sync.Mutex
-	nextSeq    map[string]uint64                    // chatID -> next seq
-	messages   map[string]*Message                  // serverMsgID -> Message
-	byClient   map[string]map[string]*Message       // from -> clientMsgID -> Message
-	deliveries map[string]map[string]*DeliveryEntry // serverMsgID -> to -> DeliveryEntry
+	nextSeq    map[string]uint64                       // chatID -> next seq
+	messages   map[string]*protocol.Message            // serverMsgID -> Message
+	byClient   map[string]map[string]*protocol.Message // from -> clientMsgID -> Message
+	deliveries map[string]map[string]*DeliveryEntry    // serverMsgID -> to -> DeliveryEntry
 
 	persistent bool
 }
@@ -39,8 +41,8 @@ type InMemoryStore struct {
 func NewInMemoryStore() *InMemoryStore {
 	return &InMemoryStore{
 		nextSeq:    make(map[string]uint64),
-		messages:   make(map[string]*Message),
-		byClient:   make(map[string]map[string]*Message),
+		messages:   make(map[string]*protocol.Message),
+		byClient:   make(map[string]map[string]*protocol.Message),
 		deliveries: make(map[string]map[string]*DeliveryEntry),
 		persistent: storage.DB != nil,
 	}
@@ -67,11 +69,11 @@ func (s *InMemoryStore) NextSeq(chatID string) (uint64, error) {
 	return seq, nil
 }
 
-func (s *InMemoryStore) SaveMessage(msg *Message) error {
+func (s *InMemoryStore) SaveMessage(msg *protocol.Message) error {
 	return s.SaveMessageWithRecipients(msg, nil)
 }
 
-func (s *InMemoryStore) SaveMessageWithRecipients(msg *Message, recipients []string) error {
+func (s *InMemoryStore) SaveMessageWithRecipients(msg *protocol.Message, recipients []string) error {
 	if msg == nil || msg.ServerMsgID == "" {
 		return errors.New("invalid message")
 	}
@@ -109,17 +111,17 @@ func (s *InMemoryStore) SaveMessageWithRecipients(msg *Message, recipients []str
 	return nil
 }
 
-func (s *InMemoryStore) saveMessageUnsafe(msg *Message) {
+func (s *InMemoryStore) saveMessageUnsafe(msg *protocol.Message) {
 	s.messages[msg.ServerMsgID] = cloneMessage(msg)
 	if msg.From != "" && msg.ClientMsgID != "" {
 		if _, ok := s.byClient[msg.From]; !ok {
-			s.byClient[msg.From] = make(map[string]*Message)
+			s.byClient[msg.From] = make(map[string]*protocol.Message)
 		}
 		s.byClient[msg.From][msg.ClientMsgID] = cloneMessage(msg)
 	}
 }
 
-func (s *InMemoryStore) GetMessageByClientID(from, clientMsgID string) *Message {
+func (s *InMemoryStore) GetMessageByClientID(from, clientMsgID string) *protocol.Message {
 	s.mu.Lock()
 	if from != "" && clientMsgID != "" {
 		if m, ok := s.byClient[from]; ok {
@@ -147,7 +149,7 @@ func (s *InMemoryStore) GetMessageByClientID(from, clientMsgID string) *Message 
 	return cloneMessage(msg)
 }
 
-func (s *InMemoryStore) GetMessageByServerID(serverMsgID string) *Message {
+func (s *InMemoryStore) GetMessageByServerID(serverMsgID string) *protocol.Message {
 	s.mu.Lock()
 	if msg, ok := s.messages[serverMsgID]; ok {
 		out := cloneMessage(msg)
@@ -220,7 +222,7 @@ func (s *InMemoryStore) GetRecipients(serverMsgID string) []string {
 		return nil
 	}
 	for _, row := range rows {
-		_ = s.SaveDelivery(serverMsgID, row.ToUser)
+		_ = s.SaveDelivery(row.ServerMsgID, row.ToUser)
 		res = append(res, row.ToUser)
 	}
 	return res
@@ -428,18 +430,11 @@ func (s *InMemoryStore) GetDueRetryServerMsgIDs(limit int) []string {
 	return dedupeStrings(out)
 }
 
-type DeliveryStatusStats struct {
-	Pending   int64
-	Delivered int64
-	Read      int64
-	Dead      int64
-}
-
-func (s *InMemoryStore) DeliveryStats() DeliveryStatusStats {
+func (s *InMemoryStore) DeliveryStats() iface.DeliveryStatusStats {
 	if !s.persistent {
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		var st DeliveryStatusStats
+		var st iface.DeliveryStatusStats
 		for _, m := range s.deliveries {
 			for _, e := range m {
 				if e == nil {
@@ -472,7 +467,7 @@ func (s *InMemoryStore) DeliveryStats() DeliveryStatusStats {
 		Group("status").
 		Scan(&rows).Error
 
-	var st DeliveryStatusStats
+	var st iface.DeliveryStatusStats
 	for _, row := range rows {
 		switch row.Status {
 		case 0:
@@ -555,7 +550,7 @@ func (s *InMemoryStore) ListPendingServerMsgIDsByUser(toUser string, limit int) 
 	return dedupeStrings(out)
 }
 
-func (s *InMemoryStore) GetC2CHistory(userA, userB string, limit int) []*Message {
+func (s *InMemoryStore) GetC2CHistory(userA, userB string, limit int) []*protocol.Message {
 	if userA == "" || userB == "" {
 		return nil
 	}
@@ -575,7 +570,7 @@ func (s *InMemoryStore) GetC2CHistory(userA, userB string, limit int) []*Message
 		return nil
 	}
 
-	out := make([]*Message, 0, len(rows))
+	out := make([]*protocol.Message, 0, len(rows))
 	for _, row := range rows {
 		msg := fromDBMessage(&row)
 		toUser := userA
@@ -592,11 +587,11 @@ func (s *InMemoryStore) GetC2CHistory(userA, userB string, limit int) []*Message
 	return out
 }
 
-func (s *InMemoryStore) getC2CHistoryFromMemory(userA, userB string, limit int) []*Message {
+func (s *InMemoryStore) getC2CHistoryFromMemory(userA, userB string, limit int) []*protocol.Message {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	out := make([]*Message, 0, len(s.messages))
+	out := make([]*protocol.Message, 0, len(s.messages))
 	for _, msg := range s.messages {
 		if (msg.From == userA && msg.To == userB) || (msg.From == userB && msg.To == userA) {
 			out = append(out, cloneMessage(msg))
@@ -627,13 +622,13 @@ func dedupeStrings(in []string) []string {
 	return out
 }
 
-func reverseMessages(in []*Message) {
+func reverseMessages(in []*protocol.Message) {
 	for i, j := 0, len(in)-1; i < j; i, j = i+1, j-1 {
 		in[i], in[j] = in[j], in[i]
 	}
 }
 
-func cloneMessage(m *Message) *Message {
+func cloneMessage(m *protocol.Message) *protocol.Message {
 	if m == nil {
 		return nil
 	}
@@ -641,7 +636,7 @@ func cloneMessage(m *Message) *Message {
 	return &cp
 }
 
-func toDBMessage(m *Message) *storage.Message {
+func toDBMessage(m *protocol.Message) *storage.Message {
 	if m == nil {
 		return nil
 	}
@@ -659,12 +654,12 @@ func toDBMessage(m *Message) *storage.Message {
 	}
 }
 
-func fromDBMessage(m *storage.Message) *Message {
+func fromDBMessage(m *storage.Message) *protocol.Message {
 	if m == nil {
 		return nil
 	}
-	return &Message{
-		Type:        TypeDeliver,
+	return &protocol.Message{
+		Type:        protocol.TypeDeliver,
 		ClientMsgID: m.ClientMsgID,
 		ServerMsgID: m.ServerMsgID,
 		ChatID:      m.ChatID,

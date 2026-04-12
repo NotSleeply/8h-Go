@@ -1,19 +1,22 @@
-package server
+package logic
 
 import (
 	"fmt"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	iface "tet/src/iface"
+	"tet/src/protocol"
 )
 
 // LogicService encapsulates core message business logic.
 type LogicService struct {
-	store     *InMemoryStore
+	store     iface.Store
 	idCounter uint64
 }
 
-func NewLogicService(store *InMemoryStore) *LogicService {
+func NewLogicService(store iface.Store) *LogicService {
 	return &LogicService{store: store}
 }
 
@@ -26,11 +29,18 @@ func (l *LogicService) GenerateServerMsgID(prefix string) string {
 	return fmt.Sprintf("%s-%d-%d", p, time.Now().UnixMilli(), seq)
 }
 
+func c2cChatID(a, b string) string {
+	if a <= b {
+		return "c2c:" + a + ":" + b
+	}
+	return "c2c:" + b + ":" + a
+}
+
 // ProcessSend handles idempotency, seq/id generation and transactional persistence.
 // Returns:
 // - saved message when newly persisted
 // - existing message when dedupe hits
-func (l *LogicService) ProcessSend(req *Message, recipients []string) (saved *Message, existing *Message, err error) {
+func (l *LogicService) ProcessSend(req *protocol.Message, recipients []string) (saved *protocol.Message, existing *protocol.Message, err error) {
 	if req == nil {
 		return nil, nil, fmt.Errorf("request is nil")
 	}
@@ -54,8 +64,8 @@ func (l *LogicService) ProcessSend(req *Message, recipients []string) (saved *Me
 	}
 
 	seq, _ := l.store.NextSeq(chatID)
-	msg := &Message{
-		Type:        TypeDeliver,
+	msg := &protocol.Message{
+		Type:        protocol.TypeDeliver,
 		ServerMsgID: l.GenerateServerMsgID("s"),
 		ClientMsgID: req.ClientMsgID,
 		ChatID:      chatID,

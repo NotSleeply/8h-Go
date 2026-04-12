@@ -1,26 +1,15 @@
 package server
 
-type MsgType string
+import "tet/src/protocol"
+
+type MsgType = protocol.MsgType
+type Message = protocol.Message
 
 const (
-	TypeSend       MsgType = "send"
-	TypeSendAck    MsgType = "send_ack"
-	TypeDeliver    MsgType = "deliver"
-	TypeDeliverAck MsgType = "deliver_ack"
-	TypeReadAck    MsgType = "read_ack"
-	TypeSync       MsgType = "sync"
+	TypeSend       = protocol.TypeSend
+	TypeSendAck    = protocol.TypeSendAck
+	TypeDeliver    = protocol.TypeDeliver
+	TypeDeliverAck = protocol.TypeDeliverAck
+	TypeReadAck    = protocol.TypeReadAck
+	TypeSync       = protocol.TypeSync
 )
-
-// Message is a single-line JSON protocol message.
-type Message struct {
-	Type        MsgType `json:"type"`
-	ClientMsgID string  `json:"client_msg_id,omitempty"`
-	ServerMsgID string  `json:"server_msg_id,omitempty"`
-	ChatID      string  `json:"chat_id,omitempty"`
-	From        string  `json:"from,omitempty"`
-	To          string  `json:"to,omitempty"`
-	Seq         uint64  `json:"seq,omitempty"`
-	Status      int8    `json:"status,omitempty"`
-	Body        string  `json:"body,omitempty"`
-	Ts          int64   `json:"ts,omitempty"`
-}

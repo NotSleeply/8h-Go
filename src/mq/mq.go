@@ -1,4 +1,4 @@
-package server
+package mq
 
 import (
 	"context"
@@ -210,4 +210,12 @@ func (b *MessageBus) Close() {
 		_ = b.redisClient.Close()
 	}
 	b.wg.Wait()
+}
+
+// Mode returns the currently configured MQ mode as string.
+func (b *MessageBus) Mode() string {
+	if b == nil {
+		return string(MQModeLocal)
+	}
+	return string(b.mode)
 }
