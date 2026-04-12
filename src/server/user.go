@@ -129,6 +129,7 @@ func (u *User) SendMsg(msg string) {
 	}
 	select {
 	case u.C <- msg:
+		u.Server.markOutboundMessage()
 	default:
 		// 缓冲已满跳过阻塞（队列头阻塞保护），网络拥塞视为异常，主动下线
 		go u.Logout()
@@ -156,6 +157,10 @@ func (u *User) DoMessage(msg string) {
 		u.useExit(msg)
 	} else if msg == "who" {
 		u.useWho()
+	} else if msg == "help" {
+		u.useHelp()
+	} else if msg == "stats" {
+		u.useStats()
 	} else if strings.HasPrefix(msg, "rename|") { // rename|msg
 		u.useRename(msg)
 	} else if strings.HasPrefix(msg, "to|") { // to|toName|msg

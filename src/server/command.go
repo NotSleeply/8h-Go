@@ -6,6 +6,19 @@ import (
 	"time"
 )
 
+func (u *User) useHelp() {
+	msg := strings.Join([]string{
+		"可用命令:",
+		"  help                  查看帮助",
+		"  who                   查看在线用户",
+		"  rename|新昵称          修改昵称",
+		"  to|用户名|消息         发送私聊消息",
+		"  stats                 查看服务端运行指标",
+		"  exit                  退出聊天室",
+	}, "\n")
+	u.SendMsg(msg)
+}
+
 // 查询在线用户
 func (u *User) useWho() {
 	u.Server.MapLock.Lock()
@@ -14,6 +27,24 @@ func (u *User) useWho() {
 		u.SendMsg(msg)
 	}
 	u.Server.MapLock.Unlock()
+}
+
+func (u *User) useStats() {
+	s := u.Server.SnapshotStats()
+	msg := fmt.Sprintf(
+		"Server Stats\nstart_at: %s\nuptime: %s\nonline_users: %d\nactive_conn: %d\ntotal_conn: %d\nrejected_conn: %d\ninbound_msgs: %d\noutbound_msgs: %d\nthroughput: %.2f msg/s\ndeliver_queue_len: %d",
+		s.StartAt.Format(time.RFC3339),
+		s.Uptime.Truncate(time.Second),
+		s.OnlineUsers,
+		s.ActiveConn,
+		s.TotalConnections,
+		s.RejectedConn,
+		s.InboundMessages,
+		s.OutboundMessages,
+		s.MsgPerSec,
+		s.DeliverQueueLen,
+	)
+	u.SendMsg(msg)
 }
 
 // 更改姓名
