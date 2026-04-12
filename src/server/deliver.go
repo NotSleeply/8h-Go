@@ -31,6 +31,7 @@ func (s *Server) DeliverWorker() {
 				Ts:          msg.Ts,
 			}
 			toUser.SendJSON(deliver)
+			_ = s.store.MarkDeliverySent(serverMsgID, r, nil)
 			// 标记最后发送时间（尽力记录）
 			_ = time.Now()
 		}

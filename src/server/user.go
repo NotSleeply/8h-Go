@@ -78,6 +78,7 @@ func (u *User) Online() {
 	u.Server.MapLock.Lock()
 	u.Server.OnlineMap[u.Name] = u
 	u.Server.MapLock.Unlock()
+	u.Server.EnqueuePendingForUser(u.Name, 500)
 
 	serverMsgID, seq := u.Server.BroadcastSystemEvent(u.Name+" ✅ 已上线！", u.Name)
 
@@ -161,6 +162,10 @@ func (u *User) DoMessage(msg string) {
 		u.useHelp()
 	} else if msg == "stats" {
 		u.useStats()
+	} else if strings.HasPrefix(msg, "read|") {
+		u.useRead(msg)
+	} else if strings.HasPrefix(msg, "history|") {
+		u.useHistory(msg)
 	} else if strings.HasPrefix(msg, "rename|") { // rename|msg
 		u.useRename(msg)
 	} else if strings.HasPrefix(msg, "to|") { // to|toName|msg

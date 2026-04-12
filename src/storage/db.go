@@ -3,7 +3,7 @@ package storage
 import (
 	"log"
 
-	"gorm.io/driver/sqlite"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -23,6 +23,7 @@ func AutoMigrate() error {
 	return DB.AutoMigrate(
 		&User{},
 		&Message{},
+		&MessageRecipient{},
 		&Room{},
 		&GroupMember{},
 	)

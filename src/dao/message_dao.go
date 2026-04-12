@@ -56,9 +56,12 @@ func GetMessagesBySeq(chatID string, startSeq, endSeq uint64) ([]*storage.Messag
 }
 
 // UpdateMessageStatus 根据 server_msg_id 更新消息状态（返回 gorm.ErrRecordNotFound 如果没有匹配行）。
-func UpdateMessageStatus(serverMsgID uint64, status int8) error {
+func UpdateMessageStatus(serverMsgID string, status int8) error {
 	if storage.DB == nil {
 		return errors.New("database not initialized")
+	}
+	if serverMsgID == "" {
+		return errors.New("serverMsgID is empty")
 	}
 	res := storage.DB.Model(&storage.Message{}).Where("server_msg_id = ?", serverMsgID).Update("status", status)
 	if res.Error != nil {

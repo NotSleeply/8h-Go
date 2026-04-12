@@ -292,6 +292,8 @@ func (s *Server) HandleMessage(user *User, m *Message) {
 		s.HandleClientSend(user, m)
 	case TypeDeliverAck:
 		s.HandleDeliverAck(user, m)
+	case TypeReadAck:
+		s.HandleReadAck(user, m)
 	default:
 		// ignore other types for now
 	}
@@ -299,6 +301,13 @@ func (s *Server) HandleMessage(user *User, m *Message) {
 
 // HandleClientSend handles a client's send request: dedupe, persist in-memory and enqueue for delivery.
 func (s *Server) HandleClientSend(u *User, req *Message) {
+	if strings.TrimSpace(req.From) == "" {
+		req.From = u.Name
+	}
+	if strings.TrimSpace(req.ClientMsgID) == "" {
+		req.ClientMsgID = fmt.Sprintf("c-%d", time.Now().UnixNano())
+	}
+
 	// idempotency check by (from, client_msg_id)
 	if existing := s.store.GetMessageByClientID(req.From, req.ClientMsgID); existing != nil {
 		ack := &Message{Type: TypeSendAck, ClientMsgID: req.ClientMsgID, ServerMsgID: existing.ServerMsgID, Seq: existing.Seq}
@@ -306,33 +315,45 @@ func (s *Server) HandleClientSend(u *User, req *Message) {
 		return
 	}
 
-	seq, _ := s.store.NextSeq(req.ChatID)
+	chatID := strings.TrimSpace(req.ChatID)
+	if chatID == "" && req.To != "" {
+		chatID = c2cChatID(req.From, req.To)
+	}
+	if chatID == "" {
+		chatID = "broadcast"
+	}
+
+	seq, _ := s.store.NextSeq(chatID)
 	serverMsgID := fmt.Sprintf("s-%d", time.Now().UnixNano())
 	msg := &Message{
 		Type:        TypeDeliver,
 		ServerMsgID: serverMsgID,
 		ClientMsgID: req.ClientMsgID,
-		ChatID:      req.ChatID,
+		ChatID:      chatID,
 		From:        req.From,
 		To:          req.To,
 		Seq:         seq,
 		Body:        req.Body,
 		Ts:          time.Now().Unix(),
 	}
-	s.store.SaveMessage(msg)
 
+	var recipients []string
 	// recipients: private or broadcast to all online except sender
 	if req.To != "" {
-		s.store.SaveDelivery(serverMsgID, req.To)
+		recipients = append(recipients, req.To)
 	} else {
 		s.MapLock.RLock()
 		for _, user := range s.OnlineMap {
 			if user.Name == u.Name {
 				continue
 			}
-			s.store.SaveDelivery(serverMsgID, user.Name)
+			recipients = append(recipients, user.Name)
 		}
 		s.MapLock.RUnlock()
+	}
+	if err := s.store.SaveMessageWithRecipients(msg, recipients); err != nil {
+		u.SendMsg("消息存储失败，请稍后重试。")
+		return
 	}
 
 	// reply send_ack
@@ -340,6 +361,13 @@ func (s *Server) HandleClientSend(u *User, req *Message) {
 	u.SendJSON(ack)
 
 	// enqueue for delivery
+	s.EnqueueServerMsg(serverMsgID)
+}
+
+func (s *Server) EnqueueServerMsg(serverMsgID string) {
+	if serverMsgID == "" {
+		return
+	}
 	select {
 	case s.DeliverQueue <- serverMsgID:
 	default:
@@ -353,6 +381,31 @@ func (s *Server) HandleDeliverAck(u *User, m *Message) {
 		return
 	}
 	s.store.MarkDeliveryAcked(m.ServerMsgID, u.Name)
+}
+
+func (s *Server) HandleReadAck(u *User, m *Message) {
+	if m.ServerMsgID == "" {
+		return
+	}
+	s.store.MarkDeliveryRead(m.ServerMsgID, u.Name)
+}
+
+func (s *Server) EnqueuePendingForUser(username string, limit int) {
+	ids := s.store.ListPendingServerMsgIDsByUser(username, limit)
+	for _, id := range ids {
+		s.EnqueueServerMsg(id)
+	}
+}
+
+func (s *Server) RecoverPendingDeliveries(limit int) {
+	ids := s.store.RecoverPendingServerMsgIDs(limit)
+	for _, id := range ids {
+		s.EnqueueServerMsg(id)
+	}
+}
+
+func (s *Server) GetC2CHistory(userA, userB string, limit int) []*Message {
+	return s.store.GetC2CHistory(userA, userB, limit)
 }
 
 // 在系统范围发送一条消息（可排除某个用户名），并返回 serverMsgID 与 seq
@@ -370,25 +423,29 @@ func (s *Server) BroadcastSystemEvent(body string, exclude string) (serverMsgID 
 		Seq:         seq,
 		Ts:          time.Now().Unix(),
 	}
-	s.store.SaveMessage(msg)
 
 	// 把 pending delivery 记录写给当前在线用户（可排除触发者）
+	var recipients []string
 	s.MapLock.RLock()
 	for name := range s.OnlineMap {
 		if name == exclude {
 			continue
 		}
-		s.store.SaveDelivery(serverMsgID, name)
+		recipients = append(recipients, name)
 	}
 	s.MapLock.RUnlock()
+	_ = s.store.SaveMessageWithRecipients(msg, recipients)
 
 	// 推入投递队列，让 DeliverWorker 去发送
-	select {
-	case s.DeliverQueue <- serverMsgID:
-	default:
-		// 若队列满，可记录日志或退避；这里为简化直接丢弃
-	}
+	s.EnqueueServerMsg(serverMsgID)
 	return
+}
+
+func c2cChatID(a, b string) string {
+	if a <= b {
+		return "c2c:" + a + ":" + b
+	}
+	return "c2c:" + b + ":" + a
 }
 
 // 启动
@@ -402,6 +459,7 @@ func (s *Server) Start() {
 	defer listener.Close()
 
 	go s.DeliverWorker()
+	s.RecoverPendingDeliveries(2000)
 
 	for {
 		conn, err := listener.Accept()

@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -13,6 +14,8 @@ func (u *User) useHelp() {
 		"  who                   查看在线用户",
 		"  rename|新昵称          修改昵称",
 		"  to|用户名|消息         发送私聊消息",
+		"  history|用户名|条数     查询私聊历史（默认20）",
+		"  read|server_msg_id      上报已读回执",
 		"  stats                 查看服务端运行指标",
 		"  exit                  退出聊天室",
 	}, "\n")
@@ -91,12 +94,8 @@ func (u *User) useChat(msg string) {
 
 	toName := strings.TrimSpace(parts[1])
 	toMsg := strings.TrimSpace(parts[2])
-
-	u.Server.MapLock.RLock()
-	_, ok := u.Server.OnlineMap[toName]
-	u.Server.MapLock.RUnlock()
-	if !ok {
-		u.SendMsg("发送对象不存在，请检查用户名后重试。使用 who 查看在线用户。\n")
+	if toName == u.Name {
+		u.SendMsg("不能给自己发送私聊消息。\n")
 		return
 	}
 
@@ -111,6 +110,52 @@ func (u *User) useChat(msg string) {
 		Body:        toMsg,
 	}
 	u.Server.HandleClientSend(u, req)
+}
+
+// 已读回执
+func (u *User) useRead(msg string) {
+	parts := strings.SplitN(msg, "|", 2)
+	if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
+		u.SendMsg("命令格式错误，正确用法：read|server_msg_id\n")
+		return
+	}
+	serverMsgID := strings.TrimSpace(parts[1])
+	u.Server.HandleReadAck(u, &Message{
+		Type:        TypeReadAck,
+		ServerMsgID: serverMsgID,
+	})
+	u.SendMsg("已上报 read_ack: " + serverMsgID)
+}
+
+// 查询私聊历史
+func (u *User) useHistory(msg string) {
+	parts := strings.Split(msg, "|")
+	if len(parts) < 2 || strings.TrimSpace(parts[1]) == "" {
+		u.SendMsg("命令格式错误，正确用法：history|用户名|条数(可选)\n")
+		return
+	}
+	peer := strings.TrimSpace(parts[1])
+	limit := 20
+	if len(parts) >= 3 && strings.TrimSpace(parts[2]) != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(parts[2])); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+
+	history := u.Server.GetC2CHistory(u.Name, peer, limit)
+	if len(history) == 0 {
+		u.SendMsg("暂无历史消息。")
+		return
+	}
+
+	var lines []string
+	lines = append(lines, fmt.Sprintf("History with %s (count=%d)", peer, len(history)))
+	for _, h := range history {
+		t := time.Unix(h.Ts, 0).Format("2006-01-02 15:04:05")
+		lines = append(lines, fmt.Sprintf("[%s] %s -> %s | seq=%d id=%s status=%d | %s",
+			t, h.From, h.To, h.Seq, h.ServerMsgID, h.Status, h.Body))
+	}
+	u.SendMsg(strings.Join(lines, "\n"))
 }
 
 // 退出聊天室

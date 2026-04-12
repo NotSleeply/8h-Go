@@ -7,6 +7,7 @@ const (
 	TypeSendAck    MsgType = "send_ack"
 	TypeDeliver    MsgType = "deliver"
 	TypeDeliverAck MsgType = "deliver_ack"
+	TypeReadAck    MsgType = "read_ack"
 	TypeSync       MsgType = "sync"
 )
 
@@ -19,6 +20,7 @@ type Message struct {
 	From        string  `json:"from,omitempty"`
 	To          string  `json:"to,omitempty"`
 	Seq         uint64  `json:"seq,omitempty"`
+	Status      int8    `json:"status,omitempty"`
 	Body        string  `json:"body,omitempty"`
 	Ts          int64   `json:"ts,omitempty"`
 }
