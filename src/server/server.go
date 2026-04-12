@@ -26,6 +26,7 @@ type Server struct {
 	// Structured delivery queue and in-memory store for ACKs
 	DeliverQueue chan string
 	store        *InMemoryStore
+	bus          *MessageBus
 
 	// connection security
 	BlacklistIPs map[string]struct{}
@@ -67,6 +68,7 @@ func NewServer(ip string, port int) *Server {
 		OnlineMap:    make(map[string]*User),
 		DeliverQueue: make(chan string, 1024),
 		store:        NewInMemoryStore(),
+		bus:          NewMessageBusFromEnv(),
 		BlacklistIPs: blacklist,
 		rateWindow:   rateWindow,
 		rateLimit:    rateLimit,
@@ -143,6 +145,7 @@ func (s *Server) markOutboundMessage() {
 type StatsSnapshot struct {
 	StartAt          time.Time
 	Uptime           time.Duration
+	MQMode           string
 	OnlineUsers      int
 	ActiveConn       int64
 	TotalConnections uint64
@@ -165,10 +168,15 @@ func (s *Server) SnapshotStats() StatsSnapshot {
 	s.MapLock.RLock()
 	online := len(s.OnlineMap)
 	s.MapLock.RUnlock()
+	mqMode := string(MQModeLocal)
+	if s.bus != nil {
+		mqMode = string(s.bus.mode)
+	}
 
 	return StatsSnapshot{
 		StartAt:          s.startAt,
 		Uptime:           uptime,
+		MQMode:           mqMode,
 		OnlineUsers:      online,
 		ActiveConn:       atomic.LoadInt64(&s.activeConn),
 		TotalConnections: atomic.LoadUint64(&s.totalConnections),
@@ -368,6 +376,17 @@ func (s *Server) EnqueueServerMsg(serverMsgID string) {
 	if serverMsgID == "" {
 		return
 	}
+	if s.bus != nil {
+		s.bus.Publish(serverMsgID, s.pushDeliverQueue)
+		return
+	}
+	s.pushDeliverQueue(serverMsgID)
+}
+
+func (s *Server) pushDeliverQueue(serverMsgID string) {
+	if serverMsgID == "" {
+		return
+	}
 	select {
 	case s.DeliverQueue <- serverMsgID:
 	default:
@@ -457,8 +476,16 @@ func (s *Server) Start() {
 	}
 	fmt.Println("启动成功---", fmt.Sprintf("%s:%d", s.Ip, s.Port))
 	defer listener.Close()
+	defer func() {
+		if s.bus != nil {
+			s.bus.Close()
+		}
+	}()
 
 	go s.DeliverWorker()
+	if s.bus != nil {
+		s.bus.StartConsumers(s.pushDeliverQueue)
+	}
 	s.RecoverPendingDeliveries(2000)
 
 	for {
