@@ -35,7 +35,7 @@ type MessageRecipient struct {
 	ID          uint       `gorm:"primarykey"`
 	ServerMsgID string     `gorm:"size:64;not null;uniqueIndex:uk_msg_to,priority:1;index"`
 	ToUser      string     `gorm:"size:64;not null;uniqueIndex:uk_msg_to,priority:2;index"`
-	Status      int8       `gorm:"index;default:0;comment:'0-pending 1-delivered 2-read'"`
+	Status      int8       `gorm:"index;default:0;comment:'0-pending 1-delivered 2-read 3-dead-letter'"`
 	RetryCount  int        `gorm:"default:0"`
 	NextRetryAt *time.Time `gorm:"index"`
 	LastError   string     `gorm:"size:255"`

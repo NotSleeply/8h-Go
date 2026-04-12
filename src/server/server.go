@@ -42,6 +42,10 @@ type Server struct {
 	inboundMessages  uint64
 	outboundMessages uint64
 	activeConn       int64
+
+	// deliver retry policy
+	maxDeliverRetry int
+	retryBaseDelay  time.Duration
 }
 
 const MaxMessageLength = 1024 // 定义最大消息长度
@@ -61,19 +65,33 @@ func NewServer(ip string, port int) *Server {
 			rateLimit = n
 		}
 	}
+	maxDeliverRetry := 5
+	if v := strings.TrimSpace(os.Getenv("IM_DELIVER_MAX_RETRY")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			maxDeliverRetry = n
+		}
+	}
+	retryBaseDelay := 2 * time.Second
+	if v := strings.TrimSpace(os.Getenv("IM_DELIVER_RETRY_BASE_SEC")); v != "" {
+		if sec, err := strconv.Atoi(v); err == nil && sec > 0 {
+			retryBaseDelay = time.Duration(sec) * time.Second
+		}
+	}
 
 	server := &Server{
-		Ip:           ip,
-		Port:         port,
-		OnlineMap:    make(map[string]*User),
-		DeliverQueue: make(chan string, 1024),
-		store:        NewInMemoryStore(),
-		bus:          NewMessageBusFromEnv(),
-		BlacklistIPs: blacklist,
-		rateWindow:   rateWindow,
-		rateLimit:    rateLimit,
-		attempts:     make(map[string][]time.Time),
-		startAt:      time.Now(),
+		Ip:              ip,
+		Port:            port,
+		OnlineMap:       make(map[string]*User),
+		DeliverQueue:    make(chan string, 1024),
+		store:           NewInMemoryStore(),
+		bus:             NewMessageBusFromEnv(),
+		BlacklistIPs:    blacklist,
+		rateWindow:      rateWindow,
+		rateLimit:       rateLimit,
+		attempts:        make(map[string][]time.Time),
+		startAt:         time.Now(),
+		maxDeliverRetry: maxDeliverRetry,
+		retryBaseDelay:  retryBaseDelay,
 	}
 	return server
 }
@@ -143,17 +161,21 @@ func (s *Server) markOutboundMessage() {
 }
 
 type StatsSnapshot struct {
-	StartAt          time.Time
-	Uptime           time.Duration
-	MQMode           string
-	OnlineUsers      int
-	ActiveConn       int64
-	TotalConnections uint64
-	RejectedConn     uint64
-	InboundMessages  uint64
-	OutboundMessages uint64
-	MsgPerSec        float64
-	DeliverQueueLen  int
+	StartAt           time.Time
+	Uptime            time.Duration
+	MQMode            string
+	OnlineUsers       int
+	ActiveConn        int64
+	TotalConnections  uint64
+	RejectedConn      uint64
+	InboundMessages   uint64
+	OutboundMessages  uint64
+	MsgPerSec         float64
+	DeliverQueueLen   int
+	PendingDeliveries int64
+	DeliveredCount    int64
+	ReadCount         int64
+	DeadLetterCount   int64
 }
 
 func (s *Server) SnapshotStats() StatsSnapshot {
@@ -172,19 +194,24 @@ func (s *Server) SnapshotStats() StatsSnapshot {
 	if s.bus != nil {
 		mqMode = string(s.bus.mode)
 	}
+	deliveryStats := s.store.DeliveryStats()
 
 	return StatsSnapshot{
-		StartAt:          s.startAt,
-		Uptime:           uptime,
-		MQMode:           mqMode,
-		OnlineUsers:      online,
-		ActiveConn:       atomic.LoadInt64(&s.activeConn),
-		TotalConnections: atomic.LoadUint64(&s.totalConnections),
-		RejectedConn:     atomic.LoadUint64(&s.rejectedConn),
-		InboundMessages:  inbound,
-		OutboundMessages: outbound,
-		MsgPerSec:        float64(totalMsg) / uptime.Seconds(),
-		DeliverQueueLen:  len(s.DeliverQueue),
+		StartAt:           s.startAt,
+		Uptime:            uptime,
+		MQMode:            mqMode,
+		OnlineUsers:       online,
+		ActiveConn:        atomic.LoadInt64(&s.activeConn),
+		TotalConnections:  atomic.LoadUint64(&s.totalConnections),
+		RejectedConn:      atomic.LoadUint64(&s.rejectedConn),
+		InboundMessages:   inbound,
+		OutboundMessages:  outbound,
+		MsgPerSec:         float64(totalMsg) / uptime.Seconds(),
+		DeliverQueueLen:   len(s.DeliverQueue),
+		PendingDeliveries: deliveryStats.Pending,
+		DeliveredCount:    deliveryStats.Delivered,
+		ReadCount:         deliveryStats.Read,
+		DeadLetterCount:   deliveryStats.Dead,
 	}
 }
 
@@ -423,6 +450,17 @@ func (s *Server) RecoverPendingDeliveries(limit int) {
 	}
 }
 
+func (s *Server) RetryWorker() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		ids := s.store.GetDueRetryServerMsgIDs(500)
+		for _, id := range ids {
+			s.EnqueueServerMsg(id)
+		}
+	}
+}
+
 func (s *Server) GetC2CHistory(userA, userB string, limit int) []*Message {
 	return s.store.GetC2CHistory(userA, userB, limit)
 }
@@ -483,6 +521,7 @@ func (s *Server) Start() {
 	}()
 
 	go s.DeliverWorker()
+	go s.RetryWorker()
 	if s.bus != nil {
 		s.bus.StartConsumers(s.pushDeliverQueue)
 	}

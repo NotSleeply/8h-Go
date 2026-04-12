@@ -1,6 +1,8 @@
 package server
 
 import (
+	"errors"
+	"fmt"
 	"time"
 )
 
@@ -17,7 +19,13 @@ func (s *Server) DeliverWorker() {
 			toUser, ok := s.OnlineMap[r]
 			s.MapLock.RUnlock()
 			if !ok {
-				// 离线 — 保留为待处理，等待稍后同步
+				dead, err := s.store.ScheduleRetry(serverMsgID, r, errors.New("recipient offline"), s.maxDeliverRetry, s.retryBaseDelay)
+				if err != nil {
+					fmt.Println("[DeliverWorker] schedule retry failed:", err)
+				}
+				if dead {
+					fmt.Printf("[DeliverWorker] dead-letter: msg=%s to=%s\n", serverMsgID, r)
+				}
 				continue
 			}
 			deliver := &Message{

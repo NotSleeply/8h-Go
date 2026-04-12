@@ -35,7 +35,7 @@ func (u *User) useWho() {
 func (u *User) useStats() {
 	s := u.Server.SnapshotStats()
 	msg := fmt.Sprintf(
-		"Server Stats\nstart_at: %s\nuptime: %s\nmq_mode: %s\nonline_users: %d\nactive_conn: %d\ntotal_conn: %d\nrejected_conn: %d\ninbound_msgs: %d\noutbound_msgs: %d\nthroughput: %.2f msg/s\ndeliver_queue_len: %d",
+		"Server Stats\nstart_at: %s\nuptime: %s\nmq_mode: %s\nonline_users: %d\nactive_conn: %d\ntotal_conn: %d\nrejected_conn: %d\ninbound_msgs: %d\noutbound_msgs: %d\nthroughput: %.2f msg/s\ndeliver_queue_len: %d\ndelivery_pending: %d\ndelivery_delivered: %d\ndelivery_read: %d\ndead_letter: %d",
 		s.StartAt.Format(time.RFC3339),
 		s.Uptime.Truncate(time.Second),
 		s.MQMode,
@@ -47,6 +47,10 @@ func (u *User) useStats() {
 		s.OutboundMessages,
 		s.MsgPerSec,
 		s.DeliverQueueLen,
+		s.PendingDeliveries,
+		s.DeliveredCount,
+		s.ReadCount,
+		s.DeadLetterCount,
 	)
 	u.SendMsg(msg)
 }
