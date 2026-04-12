@@ -486,6 +486,20 @@ func c2cChatID(a, b string) string {
 	return "c2c:" + b + ":" + a
 }
 
+// GenerateServerMsgID exposes a stable server-level id generator interface.
+func (s *Server) GenerateServerMsgID() string {
+	if s.logic == nil {
+		return fmt.Sprintf("s-%d", time.Now().UnixNano())
+	}
+	return s.logic.GenerateServerMsgID("s")
+}
+
+// NextSeq exposes per-chat sequence generation for sync/replay scenarios.
+func (s *Server) NextSeq(chatID string) uint64 {
+	seq, _ := s.store.NextSeq(chatID)
+	return seq
+}
+
 // 启动
 func (s *Server) Start() {
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", s.Ip, s.Port))
