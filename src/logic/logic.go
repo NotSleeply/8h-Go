@@ -8,6 +8,7 @@ import (
 
 	iface "tet/src/iface"
 	"tet/src/protocol"
+	"tet/src/utils"
 )
 
 // LogicService encapsulates core message business logic.
@@ -29,12 +30,7 @@ func (l *LogicService) GenerateServerMsgID(prefix string) string {
 	return fmt.Sprintf("%s-%d-%d", p, time.Now().UnixMilli(), seq)
 }
 
-func c2cChatID(a, b string) string {
-	if a <= b {
-		return "c2c:" + a + ":" + b
-	}
-	return "c2c:" + b + ":" + a
-}
+// c2c chat id helper moved to src/utils/helpers.go
 
 // ProcessSend handles idempotency, seq/id generation and transactional persistence.
 // Returns:
@@ -57,7 +53,7 @@ func (l *LogicService) ProcessSend(req *protocol.Message, recipients []string) (
 
 	chatID := strings.TrimSpace(req.ChatID)
 	if chatID == "" && req.To != "" {
-		chatID = c2cChatID(req.From, req.To)
+		chatID = utils.C2CChatID(req.From, req.To)
 	}
 	if chatID == "" {
 		chatID = "broadcast"
