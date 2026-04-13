@@ -14,7 +14,8 @@ type Server struct {
 	Port int
 
 	// 上线列表
-	OnlineMap map[string]*User
+	// OnlineMap maps username -> OnlineInfo
+	OnlineMap map[string]OnlineInfo
 	MapLock   sync.RWMutex // 读多写少 锁
 
 	// Structured delivery queue and in-memory store for ACKs
@@ -42,6 +43,11 @@ type Server struct {
 	// deliver retry policy
 	maxDeliverRetry int
 	retryBaseDelay  time.Duration
+}
+
+type OnlineInfo struct {
+	Sender iface.Sender
+	Addr   string
 }
 
 const MaxMessageLength = 1024 // 定义最大消息长度

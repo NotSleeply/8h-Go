@@ -15,9 +15,9 @@ func (s *Server) HandleMessage(user *User, m *Message) {
 		}
 		s.HandleClientSend(user, m)
 	case TypeDeliverAck:
-		s.HandleDeliverAck(user, m)
+		s.HandleDeliverAckFromConn(user, m)
 	case TypeReadAck:
-		s.HandleReadAck(user, m)
+		s.HandleReadAckFromConn(user, m)
 	default:
 		// ignore other types for now
 	}
@@ -38,11 +38,11 @@ func (s *Server) HandleClientSend(u *User, req *Message) {
 		recipients = append(recipients, req.To)
 	} else {
 		s.MapLock.RLock()
-		for _, user := range s.OnlineMap {
-			if user.Name == u.Name {
+		for name := range s.OnlineMap {
+			if name == u.Name {
 				continue
 			}
-			recipients = append(recipients, user.Name)
+			recipients = append(recipients, name)
 		}
 		s.MapLock.RUnlock()
 	}
@@ -67,14 +67,14 @@ func (s *Server) HandleClientSend(u *User, req *Message) {
 }
 
 // HandleDeliverAck marks a delivery as acknowledged by recipient.
-func (s *Server) HandleDeliverAck(u *User, m *Message) {
+func (s *Server) HandleDeliverAckFromConn(u *User, m *Message) {
 	if m.ServerMsgID == "" {
 		return
 	}
 	s.logic.HandleDeliverAck(u.Name, m.ServerMsgID)
 }
 
-func (s *Server) HandleReadAck(u *User, m *Message) {
+func (s *Server) HandleReadAckFromConn(u *User, m *Message) {
 	if m.ServerMsgID == "" {
 		return
 	}

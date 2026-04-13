@@ -33,6 +33,49 @@ type Store interface {
 	GetC2CHistory(userA, userB string, limit int) []*protocol.Message
 }
 
+// Sender represents an entity that can receive messages from the server.
+type Sender interface {
+	SendJSON(m *protocol.Message)
+	SendMsg(msg string)
+}
+
+// OnlineUserInfo is a lightweight descriptor of an online user.
+type OnlineUserInfo struct {
+	Name string
+	Addr string
+}
+
+// ServerAPI defines the subset of server operations that session users depend on.
+type ServerAPI interface {
+	RegisterOnline(name string, s Sender, addr string)
+	UnregisterOnline(name string)
+	EnqueuePendingForUser(username string, limit int)
+	BroadcastSystemEvent(body string, exclude string) (serverMsgID string, seq uint64)
+	ProcessSend(req *protocol.Message, recipients []string) (*protocol.Message, *protocol.Message, error)
+	HandleDeliverAck(username, serverMsgID string)
+	HandleReadAck(username, serverMsgID string)
+	EnqueueServerMsg(serverMsgID string)
+	GetC2CHistory(userA, userB string, limit int) []*protocol.Message
+	SnapshotStatsText() string
+	MarkOutbound()
+	ListOnlineUsers() []OnlineUserInfo
+	// Expose group manager operations
+	GroupManager() GroupManagerAPI
+}
+
+// Group management helpers exposed to session layer.
+type GroupManagerAPI interface {
+	Create(groupID, owner string) error
+	Join(groupID, username string) error
+	Leave(groupID, username string) error
+	Delete(groupID, username string) error
+	Kick(groupID, by, target string) error
+	GrantAdmin(groupID, by, target string) error
+	RevokeAdmin(groupID, by, target string) error
+	Members(groupID string) []string
+	RoleOf(groupID, username string) (string, bool)
+}
+
 // MessageBusIface is an abstraction over the message bus (redis/kafka/local).
 type MessageBusIface interface {
 	Publish(serverMsgID string, fallback func(string))

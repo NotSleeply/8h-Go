@@ -74,7 +74,7 @@ func (u *User) Close() {
 // 上线
 func (u *User) Online() {
 	u.Server.MapLock.Lock()
-	u.Server.OnlineMap[u.Name] = u
+	u.Server.OnlineMap[u.Name] = OnlineInfo{Sender: u, Addr: u.Addr}
 	u.Server.MapLock.Unlock()
 	u.Server.EnqueuePendingForUser(u.Name, 500)
 

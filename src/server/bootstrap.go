@@ -44,7 +44,7 @@ func NewServer(ip string, port int) *Server {
 	server := &Server{
 		Ip:              ip,
 		Port:            port,
-		OnlineMap:       make(map[string]*User),
+		OnlineMap:       make(map[string]OnlineInfo),
 		DeliverQueue:    make(chan string, 1024),
 		store:           store,
 		bus:             mqpkg.NewMessageBusFromEnv(),

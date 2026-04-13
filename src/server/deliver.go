@@ -16,7 +16,7 @@ func (s *Server) DeliverWorker() {
 		recips := s.store.GetRecipients(serverMsgID)
 		for _, r := range recips {
 			s.MapLock.RLock()
-			toUser, ok := s.OnlineMap[r]
+			info, ok := s.OnlineMap[r]
 			s.MapLock.RUnlock()
 			if !ok {
 				dead, err := s.store.ScheduleRetry(serverMsgID, r, errors.New("recipient offline"), s.maxDeliverRetry, s.retryBaseDelay)
@@ -38,7 +38,9 @@ func (s *Server) DeliverWorker() {
 				Body:        msg.Body,
 				Ts:          msg.Ts,
 			}
-			toUser.SendJSON(deliver)
+			if info.Sender != nil {
+				info.Sender.SendJSON(deliver)
+			}
 			_ = s.store.MarkDeliverySent(serverMsgID, r, nil)
 			// 标记最后发送时间（尽力记录）
 			_ = time.Now()

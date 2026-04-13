@@ -32,12 +32,12 @@ func (u *User) useHelp() {
 
 // 查询在线用户
 func (u *User) useWho() {
-	u.Server.MapLock.Lock()
-	for _, user := range u.Server.OnlineMap {
-		msg := "[" + user.Addr + "]" + user.Name + ":" + "在线中…" + "\n"
+	u.Server.MapLock.RLock()
+	for name, info := range u.Server.OnlineMap {
+		msg := "[" + info.Addr + "]" + name + ":" + "在线中…" + "\n"
 		u.SendMsg(msg)
 	}
-	u.Server.MapLock.Unlock()
+	u.Server.MapLock.RUnlock()
 }
 
 func (u *User) useStats() {
@@ -88,7 +88,7 @@ func (u *User) useRename(msg string) {
 		return
 	}
 	delete(u.Server.OnlineMap, u.Name)
-	u.Server.OnlineMap[newName] = u
+	u.Server.OnlineMap[newName] = OnlineInfo{Sender: u, Addr: u.Addr}
 	u.Server.MapLock.Unlock()
 
 	oldName := u.Name
@@ -133,7 +133,7 @@ func (u *User) useRead(msg string) {
 		return
 	}
 	serverMsgID := strings.TrimSpace(parts[1])
-	u.Server.HandleReadAck(u, &Message{
+	u.Server.HandleReadAckFromConn(u, &Message{
 		Type:        TypeReadAck,
 		ServerMsgID: serverMsgID,
 	})
