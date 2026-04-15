@@ -79,6 +79,7 @@ func (u *User) useRename(msg string) {
 	u.SendMsg("已将 " + old + " 更改为: " + newName + "\n")
 }
 
+// 私聊
 func (u *User) useChat(msg string) {
 	parts := strings.SplitN(msg, "|", 3)
 	if len(parts) != 3 || strings.TrimSpace(parts[1]) == "" || strings.TrimSpace(parts[2]) == "" {
@@ -113,7 +114,7 @@ func (u *User) useChat(msg string) {
 		return
 	}
 	u.Server.EnqueueServerMsg(msgSaved.ServerMsgID)
-	u.SendMsg("私聊已入队: " + msgSaved.ServerMsgID)
+	u.SendMsg("已将'" + toMsg + "' 消息发送 --> " + toName + "\n")
 }
 
 func (u *User) useRead(msg string) {
