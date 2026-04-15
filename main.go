@@ -15,7 +15,7 @@ func main() {
 		dsn = "gochat.sqlite3"
 	}
 	if err := storage.InitDB(dsn); err != nil {
-		log.Fatalf("init sqlite failed: %v", err)
+		log.Fatalf("init db failed: %v", err)
 	}
 
 	s := server.NewServer("127.0.0.1", 8888)

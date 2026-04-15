@@ -20,7 +20,7 @@ func main() {
 		dsn = "gochat.sqlite3"
 	}
 	if err := storage.InitDB(dsn); err != nil {
-		log.Fatalf("init sqlite failed: %v", err)
+		log.Fatalf("init db failed: %v", err)
 	}
 
 	addr := strings.TrimSpace(os.Getenv("IM_GRPC_ADDR"))
