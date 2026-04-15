@@ -43,33 +43,6 @@ services:
     volumes:
       - kafka_data:/bitnami
 
-  app:
-    image: golang:1.25
-    container_name: goim-app
-    restart: unless-stopped
-    working_dir: /app
-    depends_on:
-      redis:
-        condition: service_healthy
-      kafka:
-        condition: service_started
-    ports:
-      - "${APP_PORT:-8888}:8888"
-      - "${GRPC_PORT:-50051}:50051"
-    env_file:
-      - .env
-    environment:
-      - IM_DB_DSN=/data/gochat.sqlite3
-      - IM_REDIS_ADDR=redis:6379
-      - IM_KAFKA_BROKERS=kafka:9092
-    volumes:
-      - ./:/app
-      - sqlite_data:/data
-    command: >
-      sh -c "
-      go mod download &&
-      go run main.go
-      "
 
 volumes:
   redis_data:
