@@ -12,7 +12,11 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/text/encoding/simplifiedchinese"
+
+	"tet/src/dao"
+	"tet/src/storage"
 )
 
 // TCP 流并重组分片消息，支持最大长度限制和基本的 JSON 协议解析。
@@ -85,6 +89,14 @@ func (s *Server) processRawLine(user *User, raw []byte, isLive chan bool) {
 		return
 	}
 	s.markInboundMessage()
+
+	// 如果用户尚未通过注册/登录，优先处理 register/login
+	if !user.Authenticated {
+		if s.handleAuthCommand(user, msgStr, isLive) {
+			return
+		}
+	}
+
 	if strings.HasPrefix(msgStr, "{") {
 		var pm Message
 		if err := json.Unmarshal([]byte(msgStr), &pm); err == nil {
@@ -97,6 +109,96 @@ func (s *Server) processRawLine(user *User, raw []byte, isLive chan bool) {
 		user.DoMessage(msgStr)
 		isLive <- true
 	}
+}
+
+// 处理未认证用户的 register/login 命令，处理后返回 true（已消费）
+func (s *Server) handleAuthCommand(user *User, msgStr string, isLive chan bool) bool {
+	lower := strings.ToLower(msgStr)
+	if strings.HasPrefix(lower, "register|") {
+		parts := strings.SplitN(msgStr, "|", 3)
+		if len(parts) < 3 {
+			user.SendMsg("注册格式错误，正确用法：register|用户名|密码\n")
+			return true
+		}
+		username := strings.TrimSpace(parts[1])
+		password := parts[2]
+		if username == "" || strings.ContainsAny(username, " \t\n\r|") {
+			user.SendMsg("用户名不可为空或包含空格/管道符。\n")
+			return true
+		}
+		// 检查是否已在线
+		s.MapLock.RLock()
+		_, occupied := s.OnlineMap[username]
+		s.MapLock.RUnlock()
+		if occupied {
+			user.SendMsg("该用户名已有人在线，请选择其他用户名。\n")
+			return true
+		}
+		// 检查是否存在于数据库
+		if _, err := dao.GetUserByName(username); err == nil {
+			user.SendMsg("用户已存在，请直接登录：login|用户名|密码\n")
+			return true
+		}
+		// 创建新用户（密码加密）
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			user.SendMsg("注册失败：密码加密错误\n")
+			return true
+		}
+		su := &storage.User{UserName: username, PasswordHash: string(hash)}
+		if err := dao.CreateUser(su); err != nil {
+			user.SendMsg("注册失败：" + err.Error() + "\n")
+			return true
+		}
+		// 注册成功，设置用户并上线
+		user.Name = username
+		user.Authenticated = true
+		user.Online()
+		user.SendMsg("注册并登录成功，欢迎：" + username + "\n")
+		isLive <- true
+		return true
+	} else if strings.HasPrefix(lower, "login|") {
+		parts := strings.SplitN(msgStr, "|", 3)
+		if len(parts) < 3 || strings.TrimSpace(parts[2]) == "" {
+			user.SendMsg("登录格式错误，正确用法：login|用户名|密码\n")
+			return true
+		}
+		username := strings.TrimSpace(parts[1])
+		password := strings.TrimSpace(parts[2])
+		if username == "" {
+			user.SendMsg("用户名不能为空\n")
+			return true
+		}
+		// 检查数据库中是否存在用户
+		su, err := dao.GetUserByName(username)
+		if err != nil {
+			user.SendMsg("用户不存在，请先注册：register|用户名|密码\n")
+			return true
+		}
+		// 必须校验密码
+		if err := bcrypt.CompareHashAndPassword([]byte(su.PasswordHash), []byte(password)); err != nil {
+			user.SendMsg("密码错误\n")
+			return true
+		}
+		// 检查是否已有该用户名在线
+		s.MapLock.RLock()
+		_, occupied := s.OnlineMap[username]
+		s.MapLock.RUnlock()
+		if occupied {
+			user.SendMsg("该用户已在其他连接登录\n")
+			return true
+		}
+		// 登录成功
+		user.Name = username
+		user.Authenticated = true
+		user.Online()
+		_ = dao.UpdateUserStatus(username, 1)
+		user.SendMsg("登录成功，欢迎回来：" + username + "\n")
+		isLive <- true
+		return true
+	}
+	user.SendMsg("请先注册或登录。注册: register|用户名|密码  登录: login|用户名|密码\n")
+	return true
 }
 
 // decodeInputText 确保将传入的行字节转换为 UTF-8 文本。首选UTF-8；如果无效，则回退到GB18030 (nc).
@@ -120,7 +222,8 @@ func (s *Server) Handler(conn net.Conn) {
 	defer atomic.AddInt64(&s.activeConn, -1)
 
 	user := NewUser(conn, s)
-	user.Online()
+	// 不立即注册为在线用户，要求客户端先 register| 或 login|
+	user.SendMsg("欢迎，请先注册：register|用户名|密码 或 登录：login|用户名|密码\n")
 	isLive := make(chan bool, 1) // 修复协程泄漏问题
 
 	go s.ManagerMessage(user, isLive)

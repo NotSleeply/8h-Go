@@ -9,6 +9,8 @@ import (
 func (u *User) useHelp() {
 	msg := strings.Join([]string{
 		"可用命令:",
+		"  register|用户名|密码    注册新用户并登录",
+		"  login|用户名|密码    登录（需要密码）",
 		"  help                  查看帮助",
 		"  who                   查看在线用户",
 		"  rename|新昵称          修改昵称",

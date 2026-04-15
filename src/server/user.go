@@ -8,15 +8,16 @@ import (
 )
 
 type User struct {
-	Name       string
-	Addr       string
-	C          chan string
-	Conn       net.Conn
-	Server     *Server
-	closeOnce  sync.Once
-	logoutOnce sync.Once
-	mu         sync.Mutex // 保护通道关闭状态
-	isClosed   bool       // 标记通道是否关闭
+	Name          string
+	Addr          string
+	C             chan string
+	Conn          net.Conn
+	Server        *Server
+	closeOnce     sync.Once
+	logoutOnce    sync.Once
+	mu            sync.Mutex // 保护通道关闭状态
+	isClosed      bool       // 标记通道是否关闭
+	Authenticated bool       // 标记用户是否已通过注册/登录
 }
 
 // 初始化
