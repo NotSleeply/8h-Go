@@ -67,6 +67,12 @@ go run ./cmd/grpcserver
 nc 127.0.0.1 8888
 ```
 
+```powershell
+netstat -ano | findstr :8888
+
+taskkill /F /PID 42252
+```
+
 输入 `help` 查看可用命令。
 
 ## 常用命令

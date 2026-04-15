@@ -14,6 +14,18 @@ func (s *Server) DeliverWorker() {
 			continue
 		}
 		recips := s.store.GetRecipients(serverMsgID)
+		if msg.To != "" {
+			seen := false
+			for _, r := range recips {
+				if r == msg.To {
+					seen = true
+					break
+				}
+			}
+			if !seen {
+				recips = append(recips, msg.To)
+			}
+		}
 		for _, r := range recips {
 			s.MapLock.RLock()
 			info, ok := s.OnlineMap[r]
@@ -39,6 +51,7 @@ func (s *Server) DeliverWorker() {
 				Ts:          msg.Ts,
 			}
 			if info.Sender != nil {
+				fmt.Printf("[DeliverWorker] deliver msg=%s to=%s online=true\n", serverMsgID, r)
 				info.Sender.SendJSON(deliver)
 			}
 			_ = s.store.MarkDeliverySent(serverMsgID, r, nil)

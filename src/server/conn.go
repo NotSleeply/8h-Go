@@ -10,6 +10,9 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 // ManagerMessage 负责从客户端读取行并解析为协议或普通文本，交由 Server 处理。
@@ -65,7 +68,8 @@ func (s *Server) ManagerMessage(user *User, isLive chan bool) {
 
 			parts = append(parts, chunk)
 			if !isPrefix {
-				msgStr := strings.TrimSpace(string(bytes.Join(parts, nil)))
+				raw := bytes.Join(parts, nil)
+				msgStr := strings.TrimSpace(decodeInputText(raw))
 				if msgStr != "" {
 					s.markInboundMessage()
 					// 支持最小 JSON 协议：{...}
@@ -87,6 +91,21 @@ func (s *Server) ManagerMessage(user *User, isLive chan bool) {
 			// 若 isPrefix 为 true，继续循环读取该行剩余部分
 		}
 	}
+}
+
+// decodeInputText ensures incoming line bytes are converted to UTF-8 text.
+// Prefer UTF-8; if invalid, fallback to GB18030 (common in Windows terminals / nc).
+func decodeInputText(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	if utf8.Valid(b) {
+		return string(b)
+	}
+	if out, err := simplifiedchinese.GB18030.NewDecoder().Bytes(b); err == nil && utf8.Valid(out) {
+		return string(out)
+	}
+	return string(b)
 }
 
 // Handler 处理已接受的 net.Conn，将其包装为 User 并启动消息管理协程。
