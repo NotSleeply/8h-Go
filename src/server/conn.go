@@ -15,7 +15,7 @@ import (
 	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
-// ManagerMessage 负责从客户端读取行并解析为协议或普通文本，交由 Server 处理。
+// TCP 流并重组分片消息，支持最大长度限制和基本的 JSON 协议解析。
 func (s *Server) ManagerMessage(user *User, isLive chan bool) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -30,71 +30,76 @@ func (s *Server) ManagerMessage(user *User, isLive chan bool) {
 		// 设置读超时，避免被卡住（根据需求调整）
 		user.Conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
 
-		var parts [][]byte
-		total := 0
-		for {
-			chunk, isPrefix, err := reader.ReadLine()
-			if err != nil {
-				if err == io.EOF {
-					user.Logout()
-					return
-				}
-				println("ManagerMessage:", err.Error())
+		raw, tooLong, err := readRawLine(reader)
+		if err != nil {
+			if err == io.EOF {
 				user.Logout()
 				return
 			}
+			println("ManagerMessage:", err.Error())
+			user.Logout()
+			return
+		}
+		// 如果消息过长，通知用户并丢弃该消息
+		if tooLong {
+			user.SendMsg(fmt.Sprintf("消息长度超限，最多 %d 字节，本条已丢弃。\n", MaxMessageLength))
+			continue
+		}
 
-			total += len(chunk)
-			if total > MaxMessageLength {
-				// 如果当前行还未读完，继续读并丢弃直到行结束
-				if isPrefix {
-					for isPrefix {
-						_, isPrefix, err = reader.ReadLine()
-						if err != nil {
-							if err == io.EOF {
-								user.Logout()
-								return
-							}
-							println("ManagerMessage:", err.Error())
-							user.Logout()
-							return
-						}
+		s.processRawLine(user, raw, isLive)
+	}
+}
+
+// 从 reader 读取一行，重组合并分片。若超过 MaxMessageLength，会丢弃剩余片段并返回 tooLong=true。
+func readRawLine(reader *bufio.Reader) ([]byte, bool, error) {
+	var parts [][]byte
+	total := 0
+	for {
+		chunk, isPrefix, err := reader.ReadLine()
+		if err != nil {
+			return nil, false, err
+		}
+		total += len(chunk)
+		if total > MaxMessageLength {
+			if isPrefix {
+				for isPrefix {
+					_, isPrefix, err = reader.ReadLine()
+					if err != nil {
+						return nil, false, err
 					}
 				}
-				user.SendMsg(fmt.Sprintf("消息长度超限，最多 %d 字节，本条已丢弃。\n", MaxMessageLength))
-				// 丢弃本条，进入下一条读取
-				break
 			}
-
-			parts = append(parts, chunk)
-			if !isPrefix {
-				raw := bytes.Join(parts, nil)
-				msgStr := strings.TrimSpace(decodeInputText(raw))
-				if msgStr != "" {
-					s.markInboundMessage()
-					// 支持最小 JSON 协议：{...}
-					if strings.HasPrefix(msgStr, "{") {
-						var pm Message
-						if err := json.Unmarshal([]byte(msgStr), &pm); err == nil {
-							s.HandleMessage(user, &pm)
-							isLive <- true
-						} else {
-							user.SendMsg("非法 JSON 协议: " + err.Error())
-						}
-					} else {
-						user.DoMessage(msgStr)
-						isLive <- true
-					}
-				}
-				break
-			}
-			// 若 isPrefix 为 true，继续循环读取该行剩余部分
+			return nil, true, nil
+		}
+		parts = append(parts, chunk)
+		if !isPrefix {
+			return bytes.Join(parts, nil), false, nil
 		}
 	}
 }
 
-// decodeInputText ensures incoming line bytes are converted to UTF-8 text.
-// Prefer UTF-8; if invalid, fallback to GB18030 (common in Windows terminals / nc).
+// processRawLine 负责对已重组的原始行执行解码、解析与分发。
+func (s *Server) processRawLine(user *User, raw []byte, isLive chan bool) {
+	msgStr := strings.TrimSpace(decodeInputText(raw))
+	if msgStr == "" {
+		return
+	}
+	s.markInboundMessage()
+	if strings.HasPrefix(msgStr, "{") {
+		var pm Message
+		if err := json.Unmarshal([]byte(msgStr), &pm); err == nil {
+			s.HandleMessage(user, &pm)
+			isLive <- true
+		} else {
+			user.SendMsg("非法 JSON 协议: " + err.Error())
+		}
+	} else {
+		user.DoMessage(msgStr)
+		isLive <- true
+	}
+}
+
+// decodeInputText 确保将传入的行字节转换为 UTF-8 文本。首选UTF-8；如果无效，则回退到GB18030 (nc).
 func decodeInputText(b []byte) string {
 	if len(b) == 0 {
 		return ""
