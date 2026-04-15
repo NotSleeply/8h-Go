@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -164,6 +165,12 @@ func (s *InMemoryStore) GetMessageByServerID(serverMsgID string) *protocol.Messa
 
 	var row storage.Message
 	if err := storage.DB.Where("server_msg_id = ?", serverMsgID).Take(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Historical pending records may reference old system messages that no longer exist.
+			// Keep worker quiet and let caller skip this message id.
+			return nil
+		}
+		fmt.Printf("[Store] get message by server id failed: id=%s err=%v\n", serverMsgID, err)
 		return nil
 	}
 	msg := fromDBMessage(&row)

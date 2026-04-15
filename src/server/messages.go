@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"time"
 )
@@ -49,7 +50,8 @@ func (s *Server) HandleClientSend(u *User, req *Message) {
 
 	msg, existing, err := s.logic.ProcessSend(req, recipients)
 	if err != nil {
-		u.SendMsg("消息存储失败，请稍后重试。")
+		log.Printf("[HandleClientSend] process send failed: from=%s to=%s client_msg_id=%s err=%v", req.From, req.To, req.ClientMsgID, err)
+		u.SendMsg("消息存储失败: " + err.Error())
 		return
 	}
 	if existing != nil {
