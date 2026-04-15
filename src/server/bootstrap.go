@@ -55,6 +55,7 @@ func NewServer(ip string, port int) *Server {
 		startAt:         time.Now(),
 		maxDeliverRetry: maxDeliverRetry,
 		retryBaseDelay:  retryBaseDelay,
+		deliverInFlight: make(map[string]struct{}),
 	}
 	server.logic = logicpkg.NewLogicService(store)
 	server.groupManager = group.NewGroupManager()

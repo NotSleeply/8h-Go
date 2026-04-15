@@ -43,6 +43,9 @@ type Server struct {
 	// deliver retry policy
 	maxDeliverRetry int
 	retryBaseDelay  time.Duration
+	// in-flight deliver dedupe: serverMsgID -> struct{}
+	deliverInFlight   map[string]struct{}
+	deliverInFlightMu sync.Mutex
 }
 
 type OnlineInfo struct {

@@ -19,10 +19,23 @@ func (s *Server) pushDeliverQueue(serverMsgID string) {
 	if serverMsgID == "" {
 		return
 	}
+	// dedupe: avoid enqueueing same serverMsgID while it's already in-flight
+	s.deliverInFlightMu.Lock()
+	if _, ok := s.deliverInFlight[serverMsgID]; ok {
+		s.deliverInFlightMu.Unlock()
+		return
+	}
+	s.deliverInFlight[serverMsgID] = struct{}{}
+	s.deliverInFlightMu.Unlock()
+
 	select {
 	case s.DeliverQueue <- serverMsgID:
+		// successfully enqueued
 	default:
-		// drop when full
+		// drop when full and clear in-flight marker so future attempts can enqueue
+		s.deliverInFlightMu.Lock()
+		delete(s.deliverInFlight, serverMsgID)
+		s.deliverInFlightMu.Unlock()
 	}
 }
 
