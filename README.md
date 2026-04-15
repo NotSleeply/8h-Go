@@ -15,6 +15,12 @@
 go run main.go
 ```
 
+Windows（推荐一键）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
+```
+
 ## Docker 一键启动
 
 ```bash
@@ -33,6 +39,25 @@ sh scripts/start.sh
 ```bash
 sh scripts/stop.sh
 ```
+
+Windows 停止：
+
+```powershell
+.\scripts\stop.ps1
+```
+
+## 常见问题
+
+### `init db failed: dial tcp: lookup mysql: no such host`
+
+这是因为 `mysql` 这个主机名只在 Docker Compose 内部网络可解析。  
+如果你在 Windows 主机直接运行 `go run .`，应使用主机端口映射地址（例如 `127.0.0.1:3306`），或者使用仓库中的 `.env.local` 配置。
+
+项目启动时会按以下优先级读取配置：
+1. 已存在的系统环境变量（不覆盖）
+2. `.env.local`
+3. `.env`
+4. 代码默认值
 
 ## 测试连接
 

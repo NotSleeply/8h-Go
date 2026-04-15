@@ -5,7 +5,7 @@ import "time"
 // User 用户表（对应文章的用户状态管理）
 type User struct {
 	ID           uint      `gorm:"primarykey"`
-	UserName     string    `gorm:"uniqueIndex;size:50;not null"`
+	UserName     string    `gorm:"unique;size:50;not null"`
 	PasswordHash string    `gorm:"size:100;not null"` // bcrypt加密
 	NickName     string    `gorm:"size:50"`
 	AvatarURL    string    `gorm:"size:200"`
@@ -18,7 +18,7 @@ type User struct {
 type Message struct {
 	ID          uint      `gorm:"primarykey"`
 	ClientMsgID string    `gorm:"size:64;not null;uniqueIndex:uk_from_client,priority:2"`       // 客户端消息ID（幂等性）
-	ServerMsgID string    `gorm:"uniqueIndex;size:64;not null"`                                 // 服务端消息ID（全局唯一）
+	ServerMsgID string    `gorm:"unique;size:64;not null"`                                      // 服务端消息ID（全局唯一）
 	Seq         uint64    `gorm:"index;not null"`                                               // 消息序号（用于排序和同步）
 	ChatType    int8      `gorm:"index;not null;comment:'1-单聊 2-群聊'"`                           // 会话类型
 	ChatID      string    `gorm:"index;size:64;not null"`                                       // 会话ID
@@ -49,7 +49,7 @@ type MessageRecipient struct {
 // Room 房间表（对应群聊功能）
 type Room struct {
 	ID         uint      `gorm:"primarykey"`
-	RoomID     string    `gorm:"uniqueIndex;size:64;not null"`
+	RoomID     string    `gorm:"unique;size:64;not null"`
 	Name       string    `gorm:"size:100;not null"`
 	OwnerID    string    `gorm:"index;size:64;not null"`
 	CreateTime time.Time `gorm:"autoCreateTime"`

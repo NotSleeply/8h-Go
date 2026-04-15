@@ -12,7 +12,7 @@ import (
 var DB *gorm.DB
 
 // InitDB 初始化数据库连接，仅支持 MySQL。优先读取环境变量 IM_DB_DRIVER 与 IM_DB_DSN，
-// 若未提供 DSN 则使用默认容器连接字符串。
+// 若未提供 DSN 则使用默认本机连接字符串（适配主机运行 Go + Docker MySQL）。
 func InitDB(dsn string) error {
 	driver := strings.TrimSpace(os.Getenv("IM_DB_DRIVER"))
 	if driver == "" {
@@ -28,7 +28,7 @@ func InitDB(dsn string) error {
 		dsn = strings.TrimSpace(os.Getenv("IM_DB_DSN"))
 	}
 	if dsn == "" {
-		dsn = "root:secret@tcp(mysql:3306)/goim?charset=utf8mb4&parseTime=True&loc=Local"
+		dsn = "root:secret@tcp(127.0.0.1:3306)/goim?charset=utf8mb4&parseTime=True&loc=Local"
 	}
 
 	var err error
