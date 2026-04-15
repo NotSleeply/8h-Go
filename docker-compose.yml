@@ -49,8 +49,9 @@ services:
     container_name: goim-mysql
     restart: unless-stopped
     environment:
-      - MYSQL_ROOT_PASSWORD=secret
+      - MYSQL_ROOT_PASSWORD=psword
       - MYSQL_DATABASE=goim
+      - MYSQL_ROOT_HOST=%
     ports:
       - "3306:3306"
     volumes:
