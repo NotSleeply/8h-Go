@@ -92,5 +92,4 @@ volumes:
   redis_data:
   zookeeper_data:
   kafka_data:
-  sqlite_data:
   mysql_data:
