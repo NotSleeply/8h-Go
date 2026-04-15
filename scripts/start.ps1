@@ -3,11 +3,6 @@ $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $root
 
-if (-not (Test-Path ".env")) {
-    Copy-Item ".env.example" ".env"
-    Write-Host "[start] .env not found, created from .env.example"
-}
-
 Write-Host "[start] starting services..."
 docker compose up -d
 

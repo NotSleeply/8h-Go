@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	utils.LoadEnvFilesIfUnset(".env.local", ".env")
+	utils.LoadEnvFilesIfUnset(".env.local")
 
 	dsn := strings.TrimSpace(os.Getenv("IM_DB_DSN"))
 	if dsn == "" {

@@ -24,8 +24,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
 ## Docker 一键启动
 
 ```bash
-cp .env.example .env
-docker compose up -d --build
+docker compose up -d
 ```
 
 或使用脚本：
@@ -56,8 +55,7 @@ Windows 停止：
 项目启动时会按以下优先级读取配置：
 1. 已存在的系统环境变量（不覆盖）
 2. `.env.local`
-3. `.env`
-4. 代码默认值
+3. 代码默认值
 
 ## 测试连接
 
