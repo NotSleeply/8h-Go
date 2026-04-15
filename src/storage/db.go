@@ -4,9 +4,11 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	glogger "gorm.io/gorm/logger"
 )
 
 var DB *gorm.DB
@@ -32,7 +34,17 @@ func InitDB(dsn string) error {
 	}
 
 	var err error
-	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
+		Logger: glogger.New(
+			log.New(os.Stdout, "\r\n", log.LstdFlags),
+			glogger.Config{
+				SlowThreshold:             500 * time.Millisecond,
+				LogLevel:                  glogger.Warn,
+				IgnoreRecordNotFoundError: true,
+				Colorful:                  false,
+			},
+		),
+	})
 	if err != nil {
 		return err
 	}
