@@ -11,15 +11,16 @@ import (
 )
 
 type User struct {
-	Name       string
-	Addr       string
-	C          chan string
-	Conn       net.Conn
-	Server     iface.ServerAPI
-	closeOnce  sync.Once
-	logoutOnce sync.Once
-	mu         sync.Mutex
-	isClosed   bool
+	Name          string
+	Addr          string
+	C             chan string
+	Conn          net.Conn
+	Server        iface.ServerAPI
+	Authenticated bool // 标记用户是否已通过注册/登录
+	closeOnce     sync.Once
+	logoutOnce    sync.Once
+	mu            sync.Mutex
+	isClosed      bool
 }
 
 func NewUser(conn net.Conn, srv iface.ServerAPI) *User {

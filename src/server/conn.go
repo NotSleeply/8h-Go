@@ -12,15 +12,14 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"golang.org/x/crypto/bcrypt"
-	"golang.org/x/text/encoding/simplifiedchinese"
+	"tet/src/session"
+	userpkg "tet/src/user"
 
-	"tet/src/dao"
-	"tet/src/storage"
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 // TCP 流并重组分片消息，支持最大长度限制和基本的 JSON 协议解析。
-func (s *Server) ManagerMessage(user *User, isLive chan bool) {
+func (s *Server) ManagerMessage(user *session.User, isLive chan bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			println("panic in ManagerMessage:", r)
@@ -83,7 +82,7 @@ func readRawLine(reader *bufio.Reader) ([]byte, bool, error) {
 }
 
 // processRawLine 负责对已重组的原始行执行解码、解析与分发。
-func (s *Server) processRawLine(user *User, raw []byte, isLive chan bool) {
+func (s *Server) processRawLine(user *session.User, raw []byte, isLive chan bool) {
 	msgStr := strings.TrimSpace(decodeInputText(raw))
 	if msgStr == "" {
 		return
@@ -112,7 +111,7 @@ func (s *Server) processRawLine(user *User, raw []byte, isLive chan bool) {
 }
 
 // 处理未认证用户的 register/login 命令，处理后返回 true（已消费）
-func (s *Server) handleAuthCommand(user *User, msgStr string, isLive chan bool) bool {
+func (s *Server) handleAuthCommand(user *session.User, msgStr string, isLive chan bool) bool {
 	lower := strings.ToLower(msgStr)
 	if strings.HasPrefix(lower, "register|") {
 		parts := strings.SplitN(msgStr, "|", 3)
@@ -135,25 +134,10 @@ func (s *Server) handleAuthCommand(user *User, msgStr string, isLive chan bool) 
 			return true
 		}
 		// 检查是否存在于数据库
-		if _, err := dao.GetUserByName(username); err == nil {
-			user.SendMsg("用户已存在，请直接登录：login|用户名|密码\n")
-			return true
-		}
-		// 创建新用户（密码加密）
-		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-		if err != nil {
-			user.SendMsg("注册失败：密码加密错误\n")
-			return true
-		}
-		su := &storage.User{UserName: username, PasswordHash: string(hash)}
-		if err := dao.CreateUser(su); err != nil {
+		if err := userpkg.Register(user, username, password); err != nil {
 			user.SendMsg("注册失败：" + err.Error() + "\n")
 			return true
 		}
-		// 注册成功，设置用户并上线
-		user.Name = username
-		user.Authenticated = true
-		user.Online()
 		user.SendMsg("注册并登录成功，欢迎：" + username + "\n")
 		isLive <- true
 		return true
@@ -170,29 +154,10 @@ func (s *Server) handleAuthCommand(user *User, msgStr string, isLive chan bool) 
 			return true
 		}
 		// 检查数据库中是否存在用户
-		su, err := dao.GetUserByName(username)
-		if err != nil {
-			user.SendMsg("用户不存在，请先注册：register|用户名|密码\n")
+		if err := userpkg.Login(user, username, password); err != nil {
+			user.SendMsg("登录失败：" + err.Error() + "\n")
 			return true
 		}
-		// 必须校验密码
-		if err := bcrypt.CompareHashAndPassword([]byte(su.PasswordHash), []byte(password)); err != nil {
-			user.SendMsg("密码错误\n")
-			return true
-		}
-		// 检查是否已有该用户名在线
-		s.MapLock.RLock()
-		_, occupied := s.OnlineMap[username]
-		s.MapLock.RUnlock()
-		if occupied {
-			user.SendMsg("该用户已在其他连接登录\n")
-			return true
-		}
-		// 登录成功
-		user.Name = username
-		user.Authenticated = true
-		user.Online()
-		_ = dao.UpdateUserStatus(username, 1)
 		user.SendMsg("登录成功，欢迎回来：" + username + "\n")
 		isLive <- true
 		return true
@@ -221,7 +186,7 @@ func (s *Server) Handler(conn net.Conn) {
 	atomic.AddInt64(&s.activeConn, 1)
 	defer atomic.AddInt64(&s.activeConn, -1)
 
-	user := NewUser(conn, s)
+	user := session.NewUser(conn, s)
 	// 不立即注册为在线用户，要求客户端先 register| 或 login|
 	user.SendMsg("欢迎，请先注册：register|用户名|密码 或 登录：login|用户名|密码\n")
 	isLive := make(chan bool, 1) // 修复协程泄漏问题

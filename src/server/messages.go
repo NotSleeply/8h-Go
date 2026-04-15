@@ -5,10 +5,12 @@ import (
 	"log"
 	"strings"
 	"time"
+
+	"tet/src/session"
 )
 
 // HandleMessage dispatches incoming protocol messages from clients.
-func (s *Server) HandleMessage(user *User, m *Message) {
+func (s *Server) HandleMessage(user *session.User, m *Message) {
 	switch m.Type {
 	case TypeSend:
 		if m.From == "" {
@@ -25,7 +27,7 @@ func (s *Server) HandleMessage(user *User, m *Message) {
 }
 
 // HandleClientSend handles a client's send request: dedupe, persist in-memory and enqueue for delivery.
-func (s *Server) HandleClientSend(u *User, req *Message) {
+func (s *Server) HandleClientSend(u *session.User, req *Message) {
 	if strings.TrimSpace(req.From) == "" {
 		req.From = u.Name
 	}
@@ -69,14 +71,14 @@ func (s *Server) HandleClientSend(u *User, req *Message) {
 }
 
 // HandleDeliverAck marks a delivery as acknowledged by recipient.
-func (s *Server) HandleDeliverAckFromConn(u *User, m *Message) {
+func (s *Server) HandleDeliverAckFromConn(u *session.User, m *Message) {
 	if m.ServerMsgID == "" {
 		return
 	}
 	s.logic.HandleDeliverAck(u.Name, m.ServerMsgID)
 }
 
-func (s *Server) HandleReadAckFromConn(u *User, m *Message) {
+func (s *Server) HandleReadAckFromConn(u *session.User, m *Message) {
 	if m.ServerMsgID == "" {
 		return
 	}
