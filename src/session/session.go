@@ -41,7 +41,8 @@ func (u *User) writeWithPrompt(msg string) error {
 	if _, err := u.Conn.Write([]byte(msg + "\n")); err != nil {
 		return err
 	}
-	if _, err := u.Conn.Write([]byte("> ")); err != nil {
+	prompt := u.Name + "> "
+	if _, err := u.Conn.Write([]byte(prompt)); err != nil {
 		return err
 	}
 	return nil
