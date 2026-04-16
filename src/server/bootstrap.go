@@ -8,7 +8,6 @@ import (
 
 	group "tet/src/group"
 	logicpkg "tet/src/logic"
-	mqpkg "tet/src/mq"
 	storepkg "tet/src/store"
 )
 
@@ -47,8 +46,7 @@ func NewServer(ip string, port int) *Server {
 		OnlineMap:       make(map[string]OnlineInfo),
 		DeliverQueue:    make(chan string, 1024),
 		store:           store,
-		bus:             mqpkg.NewMessageBusFromEnv(),
-		BlacklistIPs:    blacklist,
+BlacklistIPs:    blacklist,
 		rateWindow:      rateWindow,
 		rateLimit:       rateLimit,
 		attempts:        make(map[string][]time.Time),

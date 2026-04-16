@@ -21,7 +21,6 @@ type Server struct {
 	// Structured delivery queue and in-memory store for ACKs
 	DeliverQueue chan string
 	store        iface.Store
-	bus          iface.MessageBusIface
 	logic        *logicpkg.LogicService
 	groupManager *group.GroupManager
 

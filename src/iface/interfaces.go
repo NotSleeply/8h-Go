@@ -76,10 +76,3 @@ type GroupManagerAPI interface {
 	RoleOf(groupID, username string) (string, bool)
 }
 
-// MessageBusIface is an abstraction over the message bus (redis/kafka/local).
-type MessageBusIface interface {
-	Publish(serverMsgID string, fallback func(string))
-	StartConsumers(push func(string))
-	Close()
-	Mode() string
-}

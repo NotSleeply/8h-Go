@@ -8,7 +8,6 @@ import (
 type StatsSnapshot struct {
 	StartAt           time.Time
 	Uptime            time.Duration
-	MQMode            string
 	OnlineUsers       int
 	ActiveConn        int64
 	TotalConnections  uint64
@@ -35,16 +34,11 @@ func (s *Server) SnapshotStats() StatsSnapshot {
 	s.MapLock.RLock()
 	online := len(s.OnlineMap)
 	s.MapLock.RUnlock()
-	mqMode := "local"
-	if s.bus != nil {
-		mqMode = s.bus.Mode()
-	}
 	deliveryStats := s.store.DeliveryStats()
 
 	return StatsSnapshot{
 		StartAt:           s.startAt,
 		Uptime:            uptime,
-		MQMode:            mqMode,
 		OnlineUsers:       online,
 		ActiveConn:        atomic.LoadInt64(&s.activeConn),
 		TotalConnections:  atomic.LoadUint64(&s.totalConnections),

@@ -58,10 +58,9 @@ func (s *Server) HandleReadAck(username, serverMsgID string) {
 func (s *Server) SnapshotStatsText() string {
 	st := s.SnapshotStats()
 	return fmt.Sprintf(
-		"Server Stats\nstart_at: %s\nuptime: %s\nmq_mode: %s\nonline_users: %d\nactive_conn: %d\ntotal_conn: %d\nrejected_conn: %d\ninbound_msgs: %d\noutbound_msgs: %d\nthroughput: %.2f msg/s\ndeliver_queue_len: %d\ndelivery_pending: %d\ndelivery_delivered: %d\ndelivery_read: %d\ndead_letter: %d",
+		"Server Stats\nstart_at: %s\nuptime: %s\nonline_users: %d\nactive_conn: %d\ntotal_conn: %d\nrejected_conn: %d\ninbound_msgs: %d\noutbound_msgs: %d\nthroughput: %.2f msg/s\ndeliver_queue_len: %d\ndelivery_pending: %d\ndelivery_delivered: %d\ndelivery_read: %d\ndead_letter: %d",
 		st.StartAt.Format(time.RFC3339),
 		st.Uptime.Truncate(time.Second),
-		st.MQMode,
 		st.OnlineUsers,
 		st.ActiveConn,
 		st.TotalConnections,

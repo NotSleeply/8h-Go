@@ -8,10 +8,6 @@ func (s *Server) EnqueueServerMsg(serverMsgID string) {
 	if serverMsgID == "" {
 		return
 	}
-	if s.bus != nil {
-		s.bus.Publish(serverMsgID, s.pushDeliverQueue)
-		return
-	}
 	s.pushDeliverQueue(serverMsgID)
 }
 
