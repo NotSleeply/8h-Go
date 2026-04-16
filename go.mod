@@ -1,4 +1,4 @@
-module tet
+module goim
 
 go 1.25.1
 
