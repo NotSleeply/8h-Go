@@ -1,8 +1,11 @@
 package store
 
 import (
+	"context"
+	"encoding/json"
 	"time"
 
+	"tet/src/cache"
 	"tet/src/storage"
 )
 
@@ -34,14 +37,25 @@ func (s *InMemoryStore) ScheduleRetry(serverMsgID, to string, lastErr error, max
 				if !s.persistent {
 					return true, nil
 				}
-				return true, storage.DB.Model(&storage.MessageRecipient{}).
+				if err := storage.DB.Model(&storage.MessageRecipient{}).
 					Where("server_msg_id = ? AND to_user = ?", serverMsgID, to).
 					Updates(map[string]any{
 						"status":        3,
 						"retry_count":   e.Retry,
 						"last_error":    errText,
 						"next_retry_at": nil,
-					}).Error
+					}).Error; err != nil {
+					return true, err
+				}
+				// invalidate caches
+				if c := cache.Client(); c != nil {
+					ctx := context.Background()
+					_ = c.Del(ctx, cache.RecipientsKey(serverMsgID)).Err()
+					_ = c.Del(ctx, cache.PendingUserKey(to)).Err()
+					_ = c.Del(ctx, cache.PendingDueKey()).Err()
+					_ = c.Del(ctx, cache.PendingRecoverKey()).Err()
+				}
+				return true, nil
 			}
 			exp := e.Retry - 1
 			if exp > 6 {
@@ -77,6 +91,14 @@ func (s *InMemoryStore) ScheduleRetry(serverMsgID, to string, lastErr error, max
 			}).Error; err != nil {
 			return false, err
 		}
+		// invalidate caches
+		if c := cache.Client(); c != nil {
+			ctx := context.Background()
+			_ = c.Del(ctx, cache.RecipientsKey(serverMsgID)).Err()
+			_ = c.Del(ctx, cache.PendingUserKey(to)).Err()
+			_ = c.Del(ctx, cache.PendingDueKey()).Err()
+			_ = c.Del(ctx, cache.PendingRecoverKey()).Err()
+		}
 		return true, nil
 	}
 	exp := nextRetryCount - 1
@@ -93,6 +115,12 @@ func (s *InMemoryStore) ScheduleRetry(serverMsgID, to string, lastErr error, max
 			"next_retry_at": &nextRetryAt,
 		}).Error; err != nil {
 		return false, err
+	}
+	// invalidate due/recover caches so next collector will refresh
+	if c := cache.Client(); c != nil {
+		ctx := context.Background()
+		_ = c.Del(ctx, cache.PendingDueKey()).Err()
+		_ = c.Del(ctx, cache.PendingRecoverKey()).Err()
 	}
 	return false, nil
 }
@@ -121,6 +149,17 @@ func (s *InMemoryStore) GetDueRetryServerMsgIDs(limit int) []string {
 	}
 
 	var rows []storage.MessageRecipient
+	// try redis cache for due list
+	if c := cache.Client(); c != nil {
+		ctx := context.Background()
+		if v, err := c.Get(ctx, cache.PendingDueKey()).Result(); err == nil && v != "" {
+			var out []string
+			if err := json.Unmarshal([]byte(v), &out); err == nil {
+				return dedupeStrings(out)
+			}
+		}
+	}
+
 	q := storage.DB.Where("status = 0 AND next_retry_at IS NOT NULL AND next_retry_at <= ?", now).Order("next_retry_at asc")
 	if limit > 0 {
 		q = q.Limit(limit)
@@ -132,6 +171,15 @@ func (s *InMemoryStore) GetDueRetryServerMsgIDs(limit int) []string {
 	for _, row := range rows {
 		_ = s.SaveDelivery(row.ServerMsgID, row.ToUser)
 		out = append(out, row.ServerMsgID)
+	}
+	// cache short-term
+	if len(out) > 0 {
+		if c := cache.Client(); c != nil {
+			ctx := context.Background()
+			if b, err := json.Marshal(out); err == nil {
+				_ = c.Set(ctx, cache.PendingDueKey(), b, 2*time.Second).Err()
+			}
+		}
 	}
 	return dedupeStrings(out)
 }
@@ -153,6 +201,17 @@ func (s *InMemoryStore) RecoverPendingServerMsgIDs(limit int) []string {
 	}
 
 	var rows []storage.MessageRecipient
+	// try redis cache for recover list
+	if c := cache.Client(); c != nil {
+		ctx := context.Background()
+		if v, err := c.Get(ctx, cache.PendingRecoverKey()).Result(); err == nil && v != "" {
+			var out []string
+			if err := json.Unmarshal([]byte(v), &out); err == nil {
+				return dedupeStrings(out)
+			}
+		}
+	}
+
 	q := storage.DB.Where("status = 0").Order("id asc")
 	if limit > 0 {
 		q = q.Limit(limit)
@@ -164,6 +223,14 @@ func (s *InMemoryStore) RecoverPendingServerMsgIDs(limit int) []string {
 	for _, row := range rows {
 		_ = s.SaveDelivery(row.ServerMsgID, row.ToUser)
 		out = append(out, row.ServerMsgID)
+	}
+	if len(out) > 0 {
+		if c := cache.Client(); c != nil {
+			ctx := context.Background()
+			if b, err := json.Marshal(out); err == nil {
+				_ = c.Set(ctx, cache.PendingRecoverKey(), b, 2*time.Second).Err()
+			}
+		}
 	}
 	return dedupeStrings(out)
 }
@@ -187,6 +254,20 @@ func (s *InMemoryStore) ListPendingServerMsgIDsByUser(toUser string, limit int) 
 		return out
 	}
 
+	// try per-user redis cache
+	if c := cache.Client(); c != nil {
+		ctx := context.Background()
+		if v, err := c.Get(ctx, cache.PendingUserKey(toUser)).Result(); err == nil && v != "" {
+			var out []string
+			if err := json.Unmarshal([]byte(v), &out); err == nil {
+				if limit > 0 && len(out) > limit {
+					return out[:limit]
+				}
+				return out
+			}
+		}
+	}
+
 	var rows []storage.MessageRecipient
 	q := storage.DB.Where("to_user = ? AND status = 0", toUser).Order("id asc")
 	if limit > 0 {
@@ -199,6 +280,14 @@ func (s *InMemoryStore) ListPendingServerMsgIDsByUser(toUser string, limit int) 
 	for _, row := range rows {
 		_ = s.SaveDelivery(row.ServerMsgID, row.ToUser)
 		out = append(out, row.ServerMsgID)
+	}
+	if len(out) > 0 {
+		if c := cache.Client(); c != nil {
+			ctx := context.Background()
+			if b, err := json.Marshal(out); err == nil {
+				_ = c.Set(ctx, cache.PendingUserKey(toUser), b, 2*time.Second).Err()
+			}
+		}
 	}
 	return dedupeStrings(out)
 }

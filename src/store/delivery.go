@@ -1,8 +1,11 @@
 package store
 
 import (
+	"context"
+	"encoding/json"
 	"time"
 
+	"tet/src/cache"
 	iface "tet/src/iface"
 	"tet/src/storage"
 
@@ -25,7 +28,16 @@ func (s *InMemoryStore) SaveDelivery(serverMsgID, to string) error {
 		ToUser:      to,
 		Status:      0,
 	}
-	return storage.DB.Clauses(clause.OnConflict{DoNothing: true}).Create(row).Error
+	if err := storage.DB.Clauses(clause.OnConflict{DoNothing: true}).Create(row).Error; err != nil {
+		return err
+	}
+	// invalidate recipient and pending caches for this key/user
+	if c := cache.Client(); c != nil {
+		ctx := context.Background()
+		_ = c.Del(ctx, cache.RecipientsKey(serverMsgID)).Err()
+		_ = c.Del(ctx, cache.PendingUserKey(to)).Err()
+	}
+	return nil
 }
 
 func (s *InMemoryStore) saveDeliveryUnsafe(serverMsgID, to string) {
@@ -53,13 +65,42 @@ func (s *InMemoryStore) GetRecipients(serverMsgID string) []string {
 		return res
 	}
 
+	// try redis cache first
+	if c := cache.Client(); c != nil {
+		ctx := context.Background()
+		if val, err := c.Get(ctx, cache.RecipientsKey(serverMsgID)).Result(); err == nil && val != "" {
+			var out []string
+			if err := json.Unmarshal([]byte(val), &out); err == nil {
+				// populate in-memory to avoid DB hits later
+				s.mu.Lock()
+				for _, to := range out {
+					s.saveDeliveryUnsafe(serverMsgID, to)
+				}
+				s.mu.Unlock()
+				return out
+			}
+		}
+	}
+
 	var rows []storage.MessageRecipient
 	if err := storage.DB.Where("server_msg_id = ? AND status = 0", serverMsgID).Find(&rows).Error; err != nil {
 		return nil
 	}
 	for _, row := range rows {
-		_ = s.SaveDelivery(row.ServerMsgID, row.ToUser)
+		// populate in-memory only
+		s.mu.Lock()
+		s.saveDeliveryUnsafe(row.ServerMsgID, row.ToUser)
+		s.mu.Unlock()
 		res = append(res, row.ToUser)
+	}
+	// write back to redis cache
+	if len(res) > 0 {
+		if c := cache.Client(); c != nil {
+			ctx := context.Background()
+			if b, err := json.Marshal(res); err == nil {
+				_ = c.Set(ctx, cache.RecipientsKey(serverMsgID), b, 5*time.Second).Err()
+			}
+		}
 	}
 	return res
 }
@@ -105,12 +146,20 @@ func (s *InMemoryStore) MarkDeliveryAcked(serverMsgID, to string) error {
 		return nil
 	}
 	now := time.Now()
-	return storage.DB.Model(&storage.MessageRecipient{}).
+	if err := storage.DB.Model(&storage.MessageRecipient{}).
 		Where("server_msg_id = ? AND to_user = ?", serverMsgID, to).
 		Updates(map[string]any{
 			"status":   clause.Expr{SQL: "CASE WHEN status < 1 THEN 1 ELSE status END"},
 			"acked_at": &now,
-		}).Error
+		}).Error; err != nil {
+		return err
+	}
+	if c := cache.Client(); c != nil {
+		ctx := context.Background()
+		_ = c.Del(ctx, cache.RecipientsKey(serverMsgID)).Err()
+		_ = c.Del(ctx, cache.PendingUserKey(to)).Err()
+	}
+	return nil
 }
 
 func (s *InMemoryStore) MarkDeliveryRead(serverMsgID, to string) error {
@@ -127,13 +176,21 @@ func (s *InMemoryStore) MarkDeliveryRead(serverMsgID, to string) error {
 		return nil
 	}
 	now := time.Now()
-	return storage.DB.Model(&storage.MessageRecipient{}).
+	if err := storage.DB.Model(&storage.MessageRecipient{}).
 		Where("server_msg_id = ? AND to_user = ?", serverMsgID, to).
 		Updates(map[string]any{
 			"status":   2,
 			"acked_at": &now,
 			"read_at":  &now,
-		}).Error
+		}).Error; err != nil {
+		return err
+	}
+	if c := cache.Client(); c != nil {
+		ctx := context.Background()
+		_ = c.Del(ctx, cache.RecipientsKey(serverMsgID)).Err()
+		_ = c.Del(ctx, cache.PendingUserKey(to)).Err()
+	}
+	return nil
 }
 
 func (s *InMemoryStore) DeliveryStats() iface.DeliveryStatusStats {

@@ -1,26 +1,29 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"sync"
 	"time"
 
+	"tet/src/cache"
 	iface "tet/src/iface"
 	"tet/src/protocol"
 )
 
 type User struct {
-	Name          string
-	Addr          string
-	C             chan string
-	Conn          net.Conn
-	Server        iface.ServerAPI
-	Authenticated bool // 标记用户是否已通过注册/登录
-	closeOnce     sync.Once
-	logoutOnce    sync.Once
-	mu            sync.Mutex
-	isClosed      bool
+	Name            string
+	Addr            string
+	C               chan string
+	Conn            net.Conn
+	Server          iface.ServerAPI
+	Authenticated   bool // 标记用户是否已通过注册/登录
+	closeOnce       sync.Once
+	logoutOnce      sync.Once
+	mu              sync.Mutex
+	isClosed        bool
+	heartbeatCancel context.CancelFunc
 }
 
 func NewUser(conn net.Conn, srv iface.ServerAPI) *User {
@@ -87,9 +90,13 @@ func (u *User) Online() {
 		}
 		u.SendJSON(sysMsg)
 	}
+	// start redis online heartbeat if redis is enabled
+	u.startOnlineHeartbeat()
 }
 
 func (u *User) Offline() {
+	// stop heartbeat and remove online key
+	u.stopOnlineHeartbeat()
 	if u.Server != nil {
 		u.Server.UnregisterOnline(u.Name)
 		serverMsgID, seq := u.Server.BroadcastSystemEvent(u.Name+" ❌ 已下线！", u.Name)
@@ -137,4 +144,56 @@ func (u *User) SendJSON(m *protocol.Message) {
 		return
 	}
 	u.SendMsg(string(b))
+}
+
+// startOnlineHeartbeat 写入在线键并启动续约心跳（若 Redis 启用）
+func (u *User) startOnlineHeartbeat() {
+	u.mu.Lock()
+	// cancel any existing heartbeat
+	if u.heartbeatCancel != nil {
+		u.heartbeatCancel()
+		u.heartbeatCancel = nil
+	}
+	c := cache.Client()
+	if c == nil || u.Name == "" {
+		u.mu.Unlock()
+		return
+	}
+	ttl := cache.OnlineTTL()
+	key := cache.OnlineKey(u.Name)
+	val := cache.GatewayID()
+
+	// set initial key
+	_ = c.Set(context.Background(), key, val, ttl).Err()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	u.heartbeatCancel = cancel
+	u.mu.Unlock()
+
+	go func() {
+		ticker := time.NewTicker(ttl / 2)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				_ = c.Set(context.Background(), key, val, ttl).Err()
+			}
+		}
+	}()
+}
+
+// stopOnlineHeartbeat 停止心跳并删除在线键
+func (u *User) stopOnlineHeartbeat() {
+	u.mu.Lock()
+	if u.heartbeatCancel != nil {
+		u.heartbeatCancel()
+		u.heartbeatCancel = nil
+	}
+	u.mu.Unlock()
+
+	if c := cache.Client(); c != nil && u.Name != "" {
+		_ = c.Del(context.Background(), cache.OnlineKey(u.Name)).Err()
+	}
 }

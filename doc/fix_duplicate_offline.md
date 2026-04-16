@@ -25,24 +25,24 @@
 
 ```go
 func (s *Server) ManagerMessage(user *User) {
-	buf := make([]byte, 4096)
-	for {
-		n, err := user.Conn.Read(buf)
-		if n == 0 || err != nil {
-			// 【触发点 2】: 兜底清理。由于读到 EOF 或断开报错，触发注销
-			user.Logout()
-			return
-		}
+ buf := make([]byte, 4096)
+ for {
+  n, err := user.Conn.Read(buf)
+  if n == 0 || err != nil {
+   // 【触发点 2】: 兜底清理。由于读到 EOF 或断开报错，触发注销
+   user.Logout()
+   return
+  }
 
-		rawMsg := string(buf[:n])
-		if rawMsg == "exit" {
-			// 【触发点 1】: 主动退出。当接收到了退出指令时，触发注销
-			user.Logout()
-			// (协程后续会因 Socket 断开而在上面 Read() 处终止)
-		} else {
+  rawMsg := string(buf[:n])
+  if rawMsg == "exit" {
+   // 【触发点 1】: 主动退出。当接收到了退出指令时，触发注销
+   user.Logout()
+   // (协程后续会因 Socket 断开而在上面 Read() 处终止)
+  } else {
              // 处理正常消息...
         }
-	}
+ }
 }
 ```
 
@@ -50,8 +50,8 @@ func (s *Server) ManagerMessage(user *User) {
 
 ```go
 func (u *User) Logout() {
-	u.Offline() // 从在线列表中移除，并广播“❌已下线！”
-	u.Close()   // 释放 Socket 套接字等资源
+ u.Offline() // 从在线列表中移除，并广播“❌已下线！”
+ u.Close()   // 释放 Socket 套接字等资源
 }
 ```
 
@@ -71,26 +71,26 @@ Go 标准库提供的 `sync.Once` 机制完美契合这一场景。我们在 `Us
 
 ```go
 import (
-	"net"
-	"sync"
+ "net"
+ "sync"
 )
 
 type User struct {
-	Name       string
-	Conn       net.Conn
-	// 其他业务字段...
+ Name       string
+ Conn       net.Conn
+ // 其他业务字段...
 
-	// 加入 sync.Once 锁
-	logoutOnce sync.Once
+ // 加入 sync.Once 锁
+ logoutOnce sync.Once
 }
 
 // 改造后的 Logout
 func (u *User) Logout() {
-	// Do 内部传入的闭包函数，在对象生命周期内绝对只会被执行一次
-	u.logoutOnce.Do(func() {
-		u.Offline()
-		u.Close()
-	})
+ // Do 内部传入的闭包函数，在对象生命周期内绝对只会被执行一次
+ u.logoutOnce.Do(func() {
+  u.Offline()
+  u.Close()
+ })
 }
 ```
 

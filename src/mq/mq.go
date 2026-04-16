@@ -63,6 +63,13 @@ func NewMessageBusFromEnv() *MessageBus {
 		bus.redisClient = redis.NewClient(&redis.Options{
 			Addr: addr,
 		})
+
+		// verify redis connectivity when MQ mode requires Redis
+		pingCtx, pingCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer pingCancel()
+		if err := bus.redisClient.Ping(pingCtx).Err(); err != nil {
+			log.Fatalf("mq: redis connection failed (%s): %v", addr, err)
+		}
 	}
 
 	if mode == MQModeKafka || mode == MQModeDual {

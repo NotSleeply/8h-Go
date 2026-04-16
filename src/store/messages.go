@@ -1,8 +1,12 @@
 package store
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"time"
 
+	"tet/src/cache"
 	"tet/src/protocol"
 	"tet/src/storage"
 
@@ -61,6 +65,21 @@ func (s *InMemoryStore) SaveMessageWithRecipients(msg *protocol.Message, recipie
 			return nil
 		}); err != nil {
 			return err
+		}
+		// set recipients cache and invalidate per-user pending lists
+		if c := cache.Client(); c != nil {
+			ctx := context.Background()
+			if b, err := json.Marshal(recipients); err == nil {
+				_ = c.Set(ctx, cache.RecipientsKey(msg.ServerMsgID), b, 5*time.Second).Err()
+			}
+			for _, to := range recipients {
+				if to == "" {
+					continue
+				}
+				_ = c.Del(ctx, cache.PendingUserKey(to)).Err()
+			}
+			_ = c.Del(ctx, cache.PendingDueKey()).Err()
+			_ = c.Del(ctx, cache.PendingRecoverKey()).Err()
 		}
 	}
 
